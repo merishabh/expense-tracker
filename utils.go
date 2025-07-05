@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -22,4 +23,9 @@ func decodeBase64URL(data string) string {
 		return ""
 	}
 	return string(decoded)
+}
+
+func stripHTMLTags(html string) string {
+	re := regexp.MustCompile("<[^>]*>")
+	return re.ReplaceAllString(html, "")
 }
