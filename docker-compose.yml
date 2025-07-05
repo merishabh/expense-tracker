@@ -1,0 +1,17 @@
+services:
+  expense-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile.flexible
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_APPLICATION_CREDENTIALS=/root/credentials/service-account.json
+    volumes:
+      # Mount credentials directory as read-write for OAuth token refresh
+      - ./credentials:/root/credentials
+    ports:
+      # Expose port 8080 for OAuth callback (http://localhost:8080/oauth2callback)
+      - "8080:8080"
+    restart: "no"
+    # For OAuth refresh: remove token.json first, then run this container
+    # The app will output a URL to open in your browser for authentication 

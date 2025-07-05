@@ -1,0 +1,40 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/gmail/v1"
+)
+
+func main() {
+	b, err := os.ReadFile("credentials/client_secret.json")
+	if err != nil {
+		log.Fatalf("Unable to read client_secret.json: %v", err)
+	}
+
+	config, err = google.ConfigFromJSON(b, gmail.GmailReadonlyScope)
+	if err != nil {
+		log.Fatalf("Unable to parse client secret: %v", err)
+	}
+
+	client := getClient()
+
+	srv, err := gmail.New(client)
+	if err != nil {
+		log.Fatalf("Unable to create Gmail client: %v", err)
+	}
+
+	fmt.Println("Fetching and processing emails...")
+
+	// Create Firestore client using GOOGLE_CLOUD_PROJECT environment variable
+	fsClient, err := NewFirestoreClient()
+	if err != nil {
+		log.Fatalf("Failed to create Firestore client: %v", err)
+	}
+	defer fsClient.Client.Close()
+
+	processEmails(srv, "me", fsClient)
+}
