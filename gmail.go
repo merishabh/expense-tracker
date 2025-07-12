@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"time"
 
 	"google.golang.org/api/gmail/v1"
 )
@@ -89,15 +88,4 @@ func processEmails(srv *gmail.Service, user string, fsClient *FirestoreClient) {
 		}
 		pageToken = res.NextPageToken
 	}
-}
-
-func (f *FirestoreClient) SaveUnparsedEmail(body string, headers map[string]string) error {
-	doc := map[string]interface{}{
-		"body":      body,
-		"body_text": stripHTMLTags(body),
-		"headers":   headers,
-		"ts":        time.Now(),
-	}
-	_, _, err := f.Client.Collection("unparsed_emails").Add(f.Ctx, doc)
-	return err
 }

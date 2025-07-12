@@ -24,7 +24,22 @@ func getClient() *http.Client {
 		log.Printf("No valid token found, starting OAuth flow...")
 		tok = StartAuthServer()
 	}
-	return config.Client(context.Background(), tok)
+
+	// Create client that will automatically refresh the token
+	client := config.Client(context.Background(), tok)
+
+	// Check if we need to save the refreshed token
+	if tok.RefreshToken != "" {
+		// Create a token source that will automatically handle refresh
+		tokenSource := config.TokenSource(context.Background(), tok)
+		newTok, err := tokenSource.Token()
+		if err == nil && newTok.AccessToken != tok.AccessToken {
+			// Token was refreshed, save it
+			saveToken(tokFile, newTok)
+		}
+	}
+
+	return client
 }
 
 func tokenFromFile(file string) (*oauth2.Token, error) {
@@ -54,7 +69,7 @@ func StartAuthServer() *oauth2.Token {
 		}
 	}()
 
-	authURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	authURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", "consent"))
 	fmt.Printf("Open this URL in your browser:\n%v\n", authURL)
 
 	code := <-codeCh

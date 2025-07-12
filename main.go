@@ -10,6 +10,13 @@ import (
 )
 
 func main() {
+	// Check if user wants to run API server
+	if len(os.Args) > 1 && os.Args[1] == "api" {
+		startAPIServer()
+		return
+	}
+
+	// Original email processing functionality
 	b, err := os.ReadFile("credentials/client_secret.json")
 	if err != nil {
 		log.Fatalf("Unable to read client_secret.json: %v", err)

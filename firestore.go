@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/api/iterator"
 )
 
 // FirestoreClient wraps Firestore client
@@ -40,6 +42,41 @@ func (f *FirestoreClient) SaveTransaction(txn Transaction) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("📝 Saved transaction to Firestore with ID: %s\n", docRef.ID)
+	fmt.Printf("Saved transaction to Firestore with ID: %s\n", docRef.ID)
 	return nil
+}
+
+// FetchAllTransactions retrieves all transactions from Firestore
+func (f *FirestoreClient) FetchAllTransactions() ([]Transaction, error) {
+	var txs []Transaction
+	iter := f.Client.Collection("transactions").Documents(f.Ctx)
+	defer iter.Stop()
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		var tx Transaction
+		if err := doc.DataTo(&tx); err != nil {
+			return nil, err
+		}
+		txs = append(txs, tx)
+	}
+	fmt.Printf("📊 Fetched %d transactions from Firestore\n", len(txs))
+	return txs, nil
+}
+
+// SaveUnparsedEmail stores unparsed email data for future analysis
+func (f *FirestoreClient) SaveUnparsedEmail(body string, headers map[string]string) error {
+	doc := map[string]interface{}{
+		"body":      body,
+		"body_text": stripHTMLTags(body),
+		"headers":   headers,
+		"ts":        time.Now(),
+	}
+	_, _, err := f.Client.Collection("unparsed_emails").Add(f.Ctx, doc)
+	return err
 }

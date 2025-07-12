@@ -23,12 +23,14 @@ func parseCreditCardTransaction(text string) *Transaction {
 			log.Printf("Error parsing date: %v", err)
 			return nil
 		}
+		vendor := match[3]
 		return &Transaction{
 			Type:       "HDFCCreditCard",
 			CardEnding: match[1],
 			Amount:     amount,
-			Vendor:     match[3],
+			Vendor:     vendor,
 			DateTime:   dt,
+			Category:   CategorizeTransaction(vendor),
 		}
 	}
 	return nil
@@ -54,6 +56,7 @@ func parseBankTransaction(text string) *Transaction {
 			CreditedAccount: match[4],
 			Amount:          amount,
 			DateTime:        dt,
+			Category:        "Transfer", // Bank transfers are typically just transfers
 		}
 	}
 	return nil
@@ -76,12 +79,14 @@ func parseICICICreditCardTransaction(text string) *Transaction {
 			log.Printf("Error parsing date: %v", err)
 			return nil
 		}
+		vendor := match[5]
 		return &Transaction{
 			Type:       "ICICICreditCard",
 			CardEnding: match[1],
 			Amount:     amount,
-			Vendor:     match[5],
+			Vendor:     vendor,
 			DateTime:   dt,
+			Category:   CategorizeTransaction(vendor),
 		}
 	}
 	return nil
@@ -97,11 +102,14 @@ func parseCardPaymentTransaction(text string) *Transaction {
 			log.Printf("Error parsing amount: %v", err)
 			return nil
 		}
+		vendor := match[2]
 		return &Transaction{
 			Type:           "ICICIBankTransfer",
 			Amount:         amount,
-			CardEnding:     match[2],
+			CardEnding:     vendor,
 			DebitedAccount: match[3],
+			Vendor:         vendor,
+			Category:       CategorizeTransaction(vendor),
 		}
 	}
 	return nil
@@ -130,12 +138,14 @@ func parseIMPSPaymentTransaction(text string) *Transaction {
 			log.Printf("Error parsing date: %v", err)
 			return nil
 		}
+		vendor := match[2] // payee
 		return &Transaction{
 			Type:           "ICICIIMPS",
 			Amount:         amount,
-			Vendor:         match[2], // payee
+			Vendor:         vendor,
 			DateTime:       dt,
 			DebitedAccount: match[6],
+			Category:       CategorizeTransaction(vendor),
 		}
 	}
 	return nil
