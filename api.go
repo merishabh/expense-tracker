@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 )
 
 type AskGeminiRequest struct {
@@ -23,30 +26,40 @@ func askGeminiHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req AskGeminiRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON request", http.StatusBadRequest)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
 	if req.Question == "" {
-		http.Error(w, "Question field is required", http.StatusBadRequest)
+		http.Error(w, "Question is required", http.StatusBadRequest)
 		return
 	}
 
-	// Initialize Firestore client
-	fsClient, err := NewFirestoreClient()
+	// Initialize database client
+	dbClient, err := NewDatabaseClient()
 	if err != nil {
-		log.Printf("Failed to create Firestore client: %v", err)
-		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		log.Printf("Failed to create database client: %v", err)
+		resp := AskGeminiResponse{Error: "Database connection failed"}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	defer fsClient.Client.Close()
+	defer dbClient.Close()
 
-	// Fetch all transactions from Firestore
-	transactions, err := fsClient.FetchAllTransactions()
+	// Fetch transactions
+	transactions, err := dbClient.FetchAllTransactions()
 	if err != nil {
 		log.Printf("Failed to fetch transactions: %v", err)
-		http.Error(w, "Failed to fetch transactions", http.StatusInternalServerError)
+		resp := AskGeminiResponse{Error: "Failed to fetch transactions"}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
@@ -54,22 +67,22 @@ func askGeminiHandler(w http.ResponseWriter, r *http.Request) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		log.Println("GEMINI_API_KEY not set")
-		http.Error(w, "Gemini API key not configured", http.StatusInternalServerError)
-		return
-	}
-	geminiClient := NewGeminiClient(apiKey)
-
-	// Ask Gemini with transactions
-	answer, err := geminiClient.AskGemini(transactions, req.Question)
-	if err != nil {
-		log.Printf("Gemini API error: %v", err)
-		resp := AskGeminiResponse{Error: "Failed to get response from Gemini"}
+		resp := AskGeminiResponse{Error: "Gemini API key not configured"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
-	// Return successful response
+	geminiClient := NewGeminiClient(apiKey)
+	answer, err := geminiClient.AskGemini(transactions, req.Question)
+	if err != nil {
+		log.Printf("Gemini API error: %v", err)
+		resp := AskGeminiResponse{Error: fmt.Sprintf("Failed to get answer: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
 	resp := AskGeminiResponse{Answer: answer}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
@@ -107,17 +120,17 @@ func analyticsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Initialize Firestore client
-	fsClient, err := NewFirestoreClient()
+	// Initialize database client
+	dbClient, err := NewDatabaseClient()
 	if err != nil {
-		log.Printf("Failed to create Firestore client: %v", err)
+		log.Printf("Failed to create database client: %v", err)
 		http.Error(w, "Database connection failed", http.StatusInternalServerError)
 		return
 	}
-	defer fsClient.Client.Close()
+	defer dbClient.Close()
 
 	// Fetch all transactions
-	transactions, err := fsClient.FetchAllTransactions()
+	transactions, err := dbClient.FetchAllTransactions()
 	if err != nil {
 		log.Printf("Failed to fetch transactions: %v", err)
 		http.Error(w, "Failed to fetch transactions", http.StatusInternalServerError)
@@ -148,16 +161,16 @@ func insightsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get transactions and generate analytics
-	fsClient, err := NewFirestoreClient()
+	dbClient, err := NewDatabaseClient()
 	if err != nil {
 		resp := InsightsResponse{Error: "Database connection failed"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	defer fsClient.Client.Close()
+	defer dbClient.Close()
 
-	transactions, err := fsClient.FetchAllTransactions()
+	transactions, err := dbClient.FetchAllTransactions()
 	if err != nil {
 		resp := InsightsResponse{Error: "Failed to fetch transactions"}
 		w.Header().Set("Content-Type", "application/json")
@@ -191,16 +204,16 @@ func recommendationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get transactions and generate analytics
-	fsClient, err := NewFirestoreClient()
+	dbClient, err := NewDatabaseClient()
 	if err != nil {
 		resp := RecommendationsResponse{Error: "Database connection failed"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	defer fsClient.Client.Close()
+	defer dbClient.Close()
 
-	transactions, err := fsClient.FetchAllTransactions()
+	transactions, err := dbClient.FetchAllTransactions()
 	if err != nil {
 		resp := RecommendationsResponse{Error: "Failed to fetch transactions"}
 		w.Header().Set("Content-Type", "application/json")
@@ -234,16 +247,16 @@ func scoreHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get transactions and generate analytics
-	fsClient, err := NewFirestoreClient()
+	dbClient, err := NewDatabaseClient()
 	if err != nil {
 		resp := ScoreResponse{Error: "Database connection failed"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	defer fsClient.Client.Close()
+	defer dbClient.Close()
 
-	transactions, err := fsClient.FetchAllTransactions()
+	transactions, err := dbClient.FetchAllTransactions()
 	if err != nil {
 		resp := ScoreResponse{Error: "Failed to fetch transactions"}
 		w.Header().Set("Content-Type", "application/json")
@@ -277,16 +290,16 @@ func predictionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get transactions and generate analytics
-	fsClient, err := NewFirestoreClient()
+	dbClient, err := NewDatabaseClient()
 	if err != nil {
 		resp := PredictionsResponse{Error: "Database connection failed"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	defer fsClient.Client.Close()
+	defer dbClient.Close()
 
-	transactions, err := fsClient.FetchAllTransactions()
+	transactions, err := dbClient.FetchAllTransactions()
 	if err != nil {
 		resp := PredictionsResponse{Error: "Failed to fetch transactions"}
 		w.Header().Set("Content-Type", "application/json")
@@ -313,7 +326,31 @@ func predictionsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+// serveStaticFiles handles serving the frontend files
+func serveStaticFiles(w http.ResponseWriter, r *http.Request) {
+	// Serve the index.html file for root path
+	if r.URL.Path == "/" {
+		http.ServeFile(w, r, "static/index.html")
+		return
+	}
+
+	// Remove the leading slash and serve from static directory
+	path := r.URL.Path[1:]
+	fullPath := filepath.Join("static", path)
+
+	// Check if file exists
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		// If file doesn't exist, serve index.html (for SPA routing)
+		http.ServeFile(w, r, "static/index.html")
+		return
+	}
+
+	// Serve the requested file
+	http.ServeFile(w, r, fullPath)
+}
+
 func startAPIServer() {
+	// API routes
 	http.HandleFunc("/ask-gemini", askGeminiHandler)
 	http.HandleFunc("/analytics", analyticsHandler)
 	http.HandleFunc("/insights", insightsHandler)
@@ -321,8 +358,12 @@ func startAPIServer() {
 	http.HandleFunc("/score", scoreHandler)
 	http.HandleFunc("/predictions", predictionsHandler)
 
+	// Static file serving
+	http.HandleFunc("/", serveStaticFiles)
+
 	log.Println("🚀 API Server starting on :8080")
-	log.Println("📊 Available endpoints:")
+	log.Println("🌐 Frontend available at: http://localhost:8080")
+	log.Println("📊 Available API endpoints:")
 	log.Println("  POST /ask-gemini          - Ask AI questions about your spending")
 	log.Println("  GET  /analytics           - Get comprehensive spending analytics")
 	log.Println("  GET  /insights            - Get spending insights and warnings")

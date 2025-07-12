@@ -1,17 +1,75 @@
+version: '3.8'
+
 services:
+  # MongoDB service for local development
+  mongodb:
+    image: mongo:7.0
+    container_name: expense-tracker-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=expense_tracker
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - expense-tracker
+
+  # MongoDB Web UI - Mongo Express
+  mongo-express:
+    image: mongo-express:1.0.2
+    container_name: expense-tracker-mongo-ui
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=admin
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=password
+      - ME_CONFIG_MONGODB_SERVER=mongodb
+      - ME_CONFIG_MONGODB_PORT=27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=password
+    depends_on:
+      - mongodb
+    networks:
+      - expense-tracker
+
+  # Main application service
   expense-tracker:
     build:
       context: .
       dockerfile: Dockerfile.flexible
+    container_name: expense-tracker-app
     environment:
+      # Database configuration - use MongoDB by default for local development
+      - DB_TYPE=mongodb
+      - MONGODB_URI=mongodb://admin:password@mongodb:27017/expense_tracker?authSource=admin
+      - MONGODB_DATABASE=expense_tracker
+      - ENVIRONMENT=development
+      
+      # Gemini API configuration
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      
+      # Firestore configuration (for production deployment)
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GOOGLE_APPLICATION_CREDENTIALS=/root/credentials/service-account.json
     volumes:
-      # Mount credentials directory as read-write for OAuth token refresh
+      # Mount credentials directory for Firestore (when needed)
       - ./credentials:/root/credentials
     ports:
-      # Expose port 8080 for OAuth callback (http://localhost:8080/oauth2callback)
       - "8080:8080"
+    depends_on:
+      - mongodb
+    networks:
+      - expense-tracker
     restart: "no"
-    # For OAuth refresh: remove token.json first, then run this container
-    # The app will output a URL to open in your browser for authentication 
+
+# Named volumes for data persistence
+volumes:
+  mongodb_data:
+    driver: local
+
+# Networks for service communication
+networks:
+  expense-tracker:
+    driver: bridge 

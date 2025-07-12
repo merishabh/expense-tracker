@@ -28,10 +28,11 @@ func getMessageBody(payload *gmail.MessagePart) string {
 	return ""
 }
 
-func processEmails(srv *gmail.Service, user string, fsClient *FirestoreClient) {
+func processEmails(srv *gmail.Service, user string, dbClient DatabaseClient) {
 	pageToken := ""
 	for {
-		req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net OR from:customercare@icicibank.com OR from:credit_cards@icicibank.com newer_than:365d").MaxResults(500)
+		// req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net OR from:customercare@icicibank.com OR from:credit_cards@icicibank.com newer_than:365d").MaxResults(500)
+		req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net newer_than:1d").MaxResults(500)
 		if pageToken != "" {
 			req = req.PageToken(pageToken)
 		}
@@ -68,18 +69,18 @@ func processEmails(srv *gmail.Service, user string, fsClient *FirestoreClient) {
 					headers[h.Name] = h.Value
 				}
 
-				if err := fsClient.SaveUnparsedEmail(cleanBody, headers); err != nil {
-					fmt.Println("❌ Failed to save unparsed email:", err)
+				if err := dbClient.SaveUnparsedEmail(cleanBody, headers); err != nil {
+					fmt.Println("Failed to save unparsed email:", err)
 				} else {
-					fmt.Println("✅ Unparsed email saved to Firestore.")
+					fmt.Println("Unparsed email saved to database.")
 				}
 				continue
 			}
 
-			if err := fsClient.SaveTransaction(*tx); err != nil {
-				fmt.Println("❌ Firestore save failed:", err)
+			if err := dbClient.SaveTransaction(*tx); err != nil {
+				fmt.Println("Database save failed:", err)
 			} else {
-				fmt.Println("✅ Transaction saved to Firestore.")
+				fmt.Println("Transaction saved to database.")
 			}
 		}
 
