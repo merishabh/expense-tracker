@@ -32,7 +32,7 @@ func NewFirestoreClient() (*FirestoreClient, error) {
 		return nil, fmt.Errorf("failed to create Firestore client: %v", err)
 	}
 
-	fmt.Printf("🔗 Connected to Firestore project: %s\n", projectID)
+	fmt.Printf("Connected to Firestore project: %s\n", projectID)
 	return &FirestoreClient{Client: client, Ctx: ctx}, nil
 }
 
@@ -75,8 +75,13 @@ func (f *FirestoreClient) SaveUnparsedEmail(body string, headers map[string]stri
 		"body":      body,
 		"body_text": stripHTMLTags(body),
 		"headers":   headers,
-		"ts":        time.Now(),
+		"timestamp": time.Now(),
 	}
 	_, _, err := f.Client.Collection("unparsed_emails").Add(f.Ctx, doc)
 	return err
+}
+
+// Close closes the Firestore connection
+func (f *FirestoreClient) Close() error {
+	return f.Client.Close()
 }

@@ -36,12 +36,12 @@ func main() {
 
 	fmt.Println("Fetching and processing emails...")
 
-	// Create Firestore client using GOOGLE_CLOUD_PROJECT environment variable
-	fsClient, err := NewFirestoreClient()
+	// Create database client (will choose MongoDB or Firestore based on environment)
+	dbClient, err := NewDatabaseClient()
 	if err != nil {
-		log.Fatalf("Failed to create Firestore client: %v", err)
+		log.Fatalf("Failed to create database client: %v", err)
 	}
-	defer fsClient.Client.Close()
+	defer dbClient.Close()
 
-	processEmails(srv, "me", fsClient)
+	processEmails(srv, "me", dbClient)
 }
