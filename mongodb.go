@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -110,4 +111,36 @@ func (m *MongoClient) SaveUnparsedEmail(body string, headers map[string]string) 
 // Close closes the MongoDB connection
 func (m *MongoClient) Close() error {
 	return m.Client.Disconnect(m.Ctx)
+}
+
+// GetCategoryMapping retrieves a vendor-to-category mapping from MongoDB
+func (m *MongoClient) GetCategoryMapping(vendor string) (*CategoryMapping, error) {
+	collection := m.Database.Collection("category_mappings")
+
+	var mapping CategoryMapping
+	err := collection.FindOne(m.Ctx, bson.M{"vendor": strings.ToLower(vendor)}).Decode(&mapping)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find category mapping: %v", err)
+	}
+
+	return &mapping, nil
+}
+
+// SaveCategoryMapping stores a vendor-to-category mapping in MongoDB
+func (m *MongoClient) SaveCategoryMapping(mapping *CategoryMapping) error {
+	collection := m.Database.Collection("category_mappings")
+
+	// Use upsert to prevent duplicates
+	filter := bson.M{"vendor": mapping.Vendor}
+	update := bson.M{"$set": mapping}
+	opts := options.UpdateOptions{}
+	opts.SetUpsert(true)
+
+	_, err := collection.UpdateOne(m.Ctx, filter, update, &opts)
+	if err != nil {
+		return fmt.Errorf("failed to save category mapping: %v", err)
+	}
+
+	fmt.Printf("💾 Saved category mapping: %s -> %s (%s)\n", mapping.Vendor, mapping.Category, mapping.Source)
+	return nil
 }

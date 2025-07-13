@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -84,4 +85,32 @@ func (f *FirestoreClient) SaveUnparsedEmail(body string, headers map[string]stri
 // Close closes the Firestore connection
 func (f *FirestoreClient) Close() error {
 	return f.Client.Close()
+}
+
+// GetCategoryMapping retrieves a vendor-to-category mapping from Firestore
+func (f *FirestoreClient) GetCategoryMapping(vendor string) (*CategoryMapping, error) {
+	vendor = strings.ToLower(vendor)
+	doc, err := f.Client.Collection("category_mappings").Doc(vendor).Get(f.Ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find category mapping: %v", err)
+	}
+
+	var mapping CategoryMapping
+	if err := doc.DataTo(&mapping); err != nil {
+		return nil, fmt.Errorf("failed to decode category mapping: %v", err)
+	}
+
+	return &mapping, nil
+}
+
+// SaveCategoryMapping stores a vendor-to-category mapping in Firestore
+func (f *FirestoreClient) SaveCategoryMapping(mapping *CategoryMapping) error {
+	vendor := strings.ToLower(mapping.Vendor)
+	_, err := f.Client.Collection("category_mappings").Doc(vendor).Set(f.Ctx, mapping)
+	if err != nil {
+		return fmt.Errorf("failed to save category mapping: %v", err)
+	}
+
+	fmt.Printf("Saved category mapping: %s -> %s (%s)\n", mapping.Vendor, mapping.Category, mapping.Source)
+	return nil
 }

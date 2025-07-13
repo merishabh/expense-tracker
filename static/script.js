@@ -1304,29 +1304,189 @@ function populateTransactions(analytics) {
         container.innerHTML = `
             <div class="no-transactions">
                 <i class="fas fa-receipt"></i>
-                <p>No recent transactions found.</p>
+                <h3>No Recent Transactions</h3>
+                <p>Once you have some transactions, they'll appear here.</p>
             </div>
         `;
         return;
     }
 
-    analytics.recent_transactions.forEach(transaction => {
+    // Create transactions list
+    const transactionsList = document.createElement('div');
+    transactionsList.className = 'transactions-list';
+
+    analytics.recent_transactions.forEach((transaction, index) => {
         const transactionCard = document.createElement('div');
         transactionCard.className = 'transaction-card';
+        transactionCard.style.animationDelay = `${index * 0.1}s`;
+        
+        // Get category icon and color
+        const categoryInfo = getCategoryInfo(transaction.Category);
+        
+        // Format transaction type
+        const transactionType = getTransactionType(transaction.Type);
+        
+        // Calculate relative time
+        const relativeTime = getRelativeTime(transaction.DateTime);
         
         transactionCard.innerHTML = `
-            <div class="transaction-header">
-                <span class="transaction-vendor">${transaction.Vendor || 'Unknown'}</span>
-                <span class="transaction-amount">${formatCurrency(transaction.Amount)}</span>
+            <div class="transaction-icon" style="background-color: ${categoryInfo.color};">
+                <i class="${categoryInfo.icon}"></i>
             </div>
-            <div class="transaction-details">
-                <span class="transaction-date">${formatDate(transaction.DateTime)}</span>
-                <span class="transaction-category">${transaction.Category || 'Other'}</span>
+            <div class="transaction-content">
+                <div class="transaction-header">
+                    <div class="transaction-vendor-info">
+                        <span class="transaction-vendor">${transaction.Vendor || 'Unknown'}</span>
+                        <span class="transaction-type">${transactionType}</span>
+                    </div>
+                    <span class="transaction-amount">${formatCurrency(transaction.Amount)}</span>
+                </div>
+                <div class="transaction-details">
+                    <div class="transaction-meta">
+                        <span class="transaction-date">
+                            <i class="fas fa-clock"></i>
+                            ${relativeTime}
+                        </span>
+                        <span class="transaction-category" style="background-color: ${categoryInfo.color}20; color: ${categoryInfo.color};">
+                            ${transaction.Category || 'Other'}
+                        </span>
+                    </div>
+                </div>
             </div>
         `;
 
-        container.appendChild(transactionCard);
+        transactionCard.addEventListener('click', () => {
+            showTransactionDetails(transaction);
+        });
+
+        transactionsList.appendChild(transactionCard);
     });
+
+    container.appendChild(transactionsList);
+
+    // Add "View All" button if there are more than 10 transactions
+    if (analytics.recent_transactions.length >= 10) {
+        const viewAllBtn = document.createElement('button');
+        viewAllBtn.className = 'view-all-btn';
+        viewAllBtn.innerHTML = `
+            <i class="fas fa-list"></i>
+            View All Transactions
+        `;
+        viewAllBtn.addEventListener('click', showAllTransactions);
+        container.appendChild(viewAllBtn);
+    }
+}
+
+// Helper function to get category information
+function getCategoryInfo(category) {
+    const categoryMap = {
+        'Food': { icon: 'fas fa-utensils', color: '#e74c3c' },
+        'General_food': { icon: 'fas fa-shopping-basket', color: '#e67e22' },
+        'Shopping': { icon: 'fas fa-shopping-cart', color: '#9b59b6' },
+        'Amazon': { icon: 'fab fa-amazon', color: '#ff9900' },
+        'Travel': { icon: 'fas fa-plane', color: '#3498db' },
+        'Entertainment': { icon: 'fas fa-film', color: '#e91e63' },
+        'Bills': { icon: 'fas fa-file-invoice', color: '#f39c12' },
+        'Healthcare': { icon: 'fas fa-heartbeat', color: '#2ecc71' },
+        'Transfer': { icon: 'fas fa-exchange-alt', color: '#17a2b8' },
+        'Other': { icon: 'fas fa-question-circle', color: '#95a5a6' }
+    };
+    
+    return categoryMap[category] || categoryMap['Other'];
+}
+
+// Helper function to get transaction type display name
+function getTransactionType(type) {
+    const typeMap = {
+        'HDFCCreditCard': 'HDFC Credit Card',
+        'ICICICreditCard': 'ICICI Credit Card',
+        'HDFCBankTransfer': 'HDFC Bank Transfer',
+        'CreditCard': 'Credit Card',
+        'BankTransfer': 'Bank Transfer'
+    };
+    
+    return typeMap[type] || type;
+}
+
+// Helper function to get relative time
+function getRelativeTime(dateTime) {
+    const now = new Date();
+    const transactionDate = new Date(dateTime);
+    const diffInSeconds = Math.floor((now - transactionDate) / 1000);
+    
+    if (diffInSeconds < 60) {
+        return 'Just now';
+    } else if (diffInSeconds < 3600) {
+        const minutes = Math.floor(diffInSeconds / 60);
+        return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+    } else if (diffInSeconds < 86400) {
+        const hours = Math.floor(diffInSeconds / 3600);
+        return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    } else if (diffInSeconds < 604800) {
+        const days = Math.floor(diffInSeconds / 86400);
+        return `${days} day${days > 1 ? 's' : ''} ago`;
+    } else {
+        return formatDate(dateTime);
+    }
+}
+
+// Function to show transaction details in a modal
+function showTransactionDetails(transaction) {
+    const modal = document.createElement('div');
+    modal.className = 'transaction-modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Transaction Details</h3>
+                <button class="close-btn" onclick="this.parentElement.parentElement.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="detail-row">
+                    <span class="detail-label">Vendor:</span>
+                    <span class="detail-value">${transaction.Vendor || 'Unknown'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Amount:</span>
+                    <span class="detail-value">${formatCurrency(transaction.Amount)}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Category:</span>
+                    <span class="detail-value">${transaction.Category || 'Other'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Date:</span>
+                    <span class="detail-value">${formatDate(transaction.DateTime)}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Type:</span>
+                    <span class="detail-value">${getTransactionType(transaction.Type)}</span>
+                </div>
+                ${transaction.CardEnding ? `
+                <div class="detail-row">
+                    <span class="detail-label">Card Ending:</span>
+                    <span class="detail-value">****${transaction.CardEnding}</span>
+                </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+    
+    // Close modal when clicking outside
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+    
+    document.body.appendChild(modal);
+}
+
+// Function to show all transactions
+function showAllTransactions() {
+    // This could be expanded to show a full transactions page
+    alert('Full transactions view - coming soon!');
 }
 
 // Chat functionality

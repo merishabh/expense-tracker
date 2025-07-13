@@ -28,11 +28,11 @@ func getMessageBody(payload *gmail.MessagePart) string {
 	return ""
 }
 
-func processEmails(srv *gmail.Service, user string, dbClient DatabaseClient) {
+func processEmails(srv *gmail.Service, user string, dbClient DatabaseClient, geminiClient *GeminiClient) {
 	pageToken := ""
 	for {
 		// req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net OR from:customercare@icicibank.com OR from:credit_cards@icicibank.com newer_than:365d").MaxResults(500)
-		req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net newer_than:1d").MaxResults(500)
+		req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net newer_than:100d").MaxResults(500)
 		if pageToken != "" {
 			req = req.PageToken(pageToken)
 		}
@@ -50,15 +50,15 @@ func processEmails(srv *gmail.Service, user string, dbClient DatabaseClient) {
 
 			var tx *Transaction
 
-			if tx = parseICICICreditCardTransaction(cleanBody); tx != nil {
+			if tx = parseICICICreditCardTransaction(cleanBody, dbClient, geminiClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = parseCreditCardTransaction(cleanBody); tx != nil {
+			} else if tx = parseCreditCardTransaction(cleanBody, dbClient, geminiClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = parseCardPaymentTransaction(cleanBody); tx != nil {
+			} else if tx = parseCardPaymentTransaction(cleanBody, dbClient, geminiClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = parseIMPSPaymentTransaction(cleanBody); tx != nil {
+			} else if tx = parseIMPSPaymentTransaction(cleanBody, dbClient, geminiClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = parseBankTransaction(cleanBody); tx != nil {
+			} else if tx = parseBankTransaction(cleanBody, dbClient, geminiClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
 			} else {
 				fmt.Println("⚠️ No known transaction format detected.")

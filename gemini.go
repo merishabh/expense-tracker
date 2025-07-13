@@ -198,8 +198,211 @@ func (g *GeminiClient) AnalyzeTransactions(transactions []Transaction) *Spending
 	return analytics
 }
 
-// ClassifyQuestion determines what type of question the user is asking
+// ClassifyQuestion uses AI to intelligently determine what type of question the user is asking
 func (g *GeminiClient) ClassifyQuestion(question string) QuestionType {
+	ctx := context.Background()
+	model := g.Client.GenerativeModel(g.Model)
+
+	prompt := fmt.Sprintf(`You are an expert financial AI assistant. Classify this user question into one of these categories:
+
+Question: "%s"
+
+Categories:
+1. SpendingAmount - Questions about how much was spent, totals, specific amounts
+2. SpendingAdvice - Requests for advice, suggestions, recommendations for improvement
+3. SpendingTrends - Questions about trends, patterns, comparisons over time
+4. CategoryAnalysis - Questions about specific categories like food, transport, shopping
+5. BudgetSuggestions - Questions about budgets, saving money, reducing expenses
+6. General - Any other financial questions
+
+Instructions:
+- Analyze the intent and context of the question
+- Consider the user's underlying need (amounts, advice, trends, categories, budgets)
+- Return ONLY the category name (e.g., "SpendingAmount", "SpendingAdvice")
+- Do not include any explanation or additional text
+
+Examples:
+- "How much did I spend on food?" → "CategoryAnalysis"
+- "What's my total spending this month?" → "SpendingAmount"
+- "Can you suggest ways to save money?" → "SpendingAdvice"
+- "Are my expenses increasing?" → "SpendingTrends"
+- "Help me create a budget" → "BudgetSuggestions"
+- "What's my financial situation?" → "General"
+
+Classification:`, question)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		fmt.Printf("⚠️ AI question classification failed, using fallback: %v\n", err)
+		return g.classifyQuestionFallback(question)
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		fmt.Printf("⚠️ No AI response for question classification, using fallback\n")
+		return g.classifyQuestionFallback(question)
+	}
+
+	// Extract the classification from the response
+	classification := strings.TrimSpace(string(resp.Candidates[0].Content.Parts[0].(genai.Text)))
+
+	// Map AI response to QuestionType
+	switch classification {
+	case "SpendingAmount":
+		fmt.Printf("🤖 AI classified question as: SpendingAmount\n")
+		return SpendingAmount
+	case "SpendingAdvice":
+		fmt.Printf("🤖 AI classified question as: SpendingAdvice\n")
+		return SpendingAdvice
+	case "SpendingTrends":
+		fmt.Printf("🤖 AI classified question as: SpendingTrends\n")
+		return SpendingTrends
+	case "CategoryAnalysis":
+		fmt.Printf("🤖 AI classified question as: CategoryAnalysis\n")
+		return CategoryAnalysis
+	case "BudgetSuggestions":
+		fmt.Printf("🤖 AI classified question as: BudgetSuggestions\n")
+		return BudgetSuggestions
+	case "General":
+		fmt.Printf("🤖 AI classified question as: General\n")
+		return General
+	default:
+		fmt.Printf("⚠️ Unknown AI classification '%s', using fallback\n", classification)
+		return g.classifyQuestionFallback(question)
+	}
+}
+
+// ClassifyQuestionWithContext uses AI with spending context for even smarter question classification
+func (g *GeminiClient) ClassifyQuestionWithContext(question string, analytics *SpendingAnalytics) QuestionType {
+	ctx := context.Background()
+	model := g.Client.GenerativeModel(g.Model)
+
+	// Build context information
+	contextInfo := ""
+	if analytics != nil {
+		contextInfo = fmt.Sprintf(`
+
+User's Spending Context:
+- Total Spending: ₹%.2f
+- Transaction Count: %d
+- Average Transaction: ₹%.2f
+- Top Categories: %s
+- Recent Trends: %s
+
+`, analytics.TotalSpending, analytics.TransactionCount, analytics.AverageTransaction,
+			g.getTopCategories(analytics), g.getRecentTrends(analytics))
+	}
+
+	prompt := fmt.Sprintf(`You are an expert financial AI assistant. Classify this user question into one of these categories based on the question intent and the user's spending context:
+
+Question: "%s"
+%s
+Categories:
+1. SpendingAmount - Questions about how much was spent, totals, specific amounts
+2. SpendingAdvice - Requests for advice, suggestions, recommendations for improvement
+3. SpendingTrends - Questions about trends, patterns, comparisons over time
+4. CategoryAnalysis - Questions about specific categories like food, transport, shopping
+5. BudgetSuggestions - Questions about budgets, saving money, reducing expenses
+6. General - Any other financial questions
+
+Context Considerations:
+- If user has high spending in a category, questions about that category are likely CategoryAnalysis
+- If user has irregular spending patterns, trend questions are likely SpendingTrends
+- If user asks vague questions but has concerning spending, they likely want SpendingAdvice
+- Questions about amounts with specific context clues should be SpendingAmount
+
+Instructions:
+- Analyze the intent and context of the question
+- Consider the user's spending patterns and context
+- Return ONLY the category name (e.g., "SpendingAmount", "SpendingAdvice")
+- Do not include any explanation or additional text
+
+Classification:`, question, contextInfo)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		fmt.Printf("⚠️ AI context-aware classification failed, using standard AI classification: %v\n", err)
+		return g.ClassifyQuestion(question)
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		fmt.Printf("⚠️ No AI response for context-aware classification, using standard AI classification\n")
+		return g.ClassifyQuestion(question)
+	}
+
+	// Extract the classification from the response
+	classification := strings.TrimSpace(string(resp.Candidates[0].Content.Parts[0].(genai.Text)))
+
+	// Map AI response to QuestionType
+	switch classification {
+	case "SpendingAmount":
+		fmt.Printf("🧠 AI (context-aware) classified question as: SpendingAmount\n")
+		return SpendingAmount
+	case "SpendingAdvice":
+		fmt.Printf("🧠 AI (context-aware) classified question as: SpendingAdvice\n")
+		return SpendingAdvice
+	case "SpendingTrends":
+		fmt.Printf("🧠 AI (context-aware) classified question as: SpendingTrends\n")
+		return SpendingTrends
+	case "CategoryAnalysis":
+		fmt.Printf("🧠 AI (context-aware) classified question as: CategoryAnalysis\n")
+		return CategoryAnalysis
+	case "BudgetSuggestions":
+		fmt.Printf("🧠 AI (context-aware) classified question as: BudgetSuggestions\n")
+		return BudgetSuggestions
+	case "General":
+		fmt.Printf("🧠 AI (context-aware) classified question as: General\n")
+		return General
+	default:
+		fmt.Printf("⚠️ Unknown AI classification '%s', using standard AI classification\n", classification)
+		return g.ClassifyQuestion(question)
+	}
+}
+
+// Helper method to get top spending categories for context
+func (g *GeminiClient) getTopCategories(analytics *SpendingAnalytics) string {
+	if analytics == nil || len(analytics.SpendingByCategory) == 0 {
+		return "No data"
+	}
+
+	type categoryAmount struct {
+		category string
+		amount   float64
+	}
+
+	var categories []categoryAmount
+	for category, amount := range analytics.SpendingByCategory {
+		categories = append(categories, categoryAmount{category, amount})
+	}
+
+	sort.Slice(categories, func(i, j int) bool {
+		return categories[i].amount > categories[j].amount
+	})
+
+	topCount := 3
+	if len(categories) < topCount {
+		topCount = len(categories)
+	}
+
+	var result []string
+	for i := 0; i < topCount; i++ {
+		result = append(result, fmt.Sprintf("%s (₹%.0f)", categories[i].category, categories[i].amount))
+	}
+
+	return strings.Join(result, ", ")
+}
+
+// Helper method to get recent spending trends for context
+func (g *GeminiClient) getRecentTrends(analytics *SpendingAnalytics) string {
+	if analytics == nil || len(analytics.MonthlyTrends) < 2 {
+		return "Insufficient data"
+	}
+
+	lastMonth := analytics.MonthlyTrends[len(analytics.MonthlyTrends)-1]
+	return fmt.Sprintf("Last month: ₹%.0f (%s)", lastMonth.Amount, lastMonth.Trend)
+}
+
+// classifyQuestionFallback provides a fallback classification using keyword matching
+func (g *GeminiClient) classifyQuestionFallback(question string) QuestionType {
 	question = strings.ToLower(question)
 
 	if strings.Contains(question, "how much") || strings.Contains(question, "total") || strings.Contains(question, "spent") {
@@ -344,8 +547,8 @@ func (g *GeminiClient) AskGemini(transactions []Transaction, question string) (s
 	// Analyze transactions to create structured data
 	analytics := g.AnalyzeTransactions(transactions)
 
-	// Classify the question type
-	questionType := g.ClassifyQuestion(question)
+	// Classify the question type using context-aware AI classification
+	questionType := g.ClassifyQuestionWithContext(question, analytics)
 
 	// Build an intelligent prompt
 	prompt := g.BuildPrompt(analytics, question, questionType)
@@ -369,4 +572,54 @@ func (g *GeminiClient) AskGemini(transactions []Transaction, question string) (s
 	}
 
 	return "", fmt.Errorf("no response from Gemini")
+}
+
+// ClassifyVendor uses Gemini AI to classify a vendor into predefined categories
+func (g *GeminiClient) ClassifyVendor(vendor string) (string, error) {
+	ctx := context.Background()
+	model := g.Client.GenerativeModel(g.Model)
+
+	prompt := fmt.Sprintf(`Classify this vendor into one of these categories:
+["Food", "Shopping", "Travel", "Entertainment", "Bills", "Healthcare", "Other"]
+
+Vendor: "%s"
+
+Instructions:
+- Return ONLY the category name (e.g., "Food", "Shopping", etc.)
+- Do not include any explanation or additional text
+- Use "Other" if the vendor doesn't clearly fit any category
+- Consider common vendor patterns and business types
+
+Category:`, vendor)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return "", fmt.Errorf("failed to generate vendor classification: %v", err)
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("no response from Gemini")
+	}
+
+	// Extract the category from the response
+	category := strings.TrimSpace(string(resp.Candidates[0].Content.Parts[0].(genai.Text)))
+
+	// Validate the category is one of our allowed categories
+	validCategories := map[string]bool{
+		"Food":          true,
+		"Shopping":      true,
+		"Travel":        true,
+		"Entertainment": true,
+		"Bills":         true,
+		"Healthcare":    true,
+		"Other":         true,
+	}
+
+	if !validCategories[category] {
+		// If AI returns invalid category, default to "Other"
+		category = "Other"
+	}
+
+	fmt.Printf("🤖 AI classified vendor '%s' as '%s'\n", vendor, category)
+	return category, nil
 }

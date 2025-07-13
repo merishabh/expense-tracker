@@ -16,6 +16,14 @@ type Transaction struct {
 	Category        string // New field for transaction category
 }
 
+// CategoryMapping represents a vendor-to-category mapping stored in MongoDB
+type CategoryMapping struct {
+	Vendor   string    `bson:"vendor" json:"vendor"`
+	Category string    `bson:"category" json:"category"`
+	Source   string    `bson:"source" json:"source"` // "manual" or "ai"
+	Created  time.Time `bson:"created" json:"created"`
+}
+
 // VendorCategoryMapping maps vendor names to categories
 var VendorCategoryMapping = map[string]string{
 	// Food & Dining
@@ -38,22 +46,22 @@ var VendorCategoryMapping = map[string]string{
 	"licious":         "Food",
 
 	// Transportation
-	"flight":           "Flight",
-	"airbnb":           "Stay",
-	"uber":             "Transportation",
-	"ola":              "Transportation",
-	"rapido":           "Transportation",
-	"metro":            "Transportation",
-	"irctc":            "Transportation",
-	"makemytrip":       "Transportation",
-	"goibibo":          "Transportation",
-	"cleartrip":        "Transportation",
-	"redbus":           "Transportation",
-	"petrol pump":      "Transportation",
-	"shell":            "Transportation",
-	"hp":               "Transportation",
-	"indian oil":       "Transportation",
-	"bharat petroleum": "Transportation",
+	"flight":           "Travel",
+	"airbnb":           "Travel",
+	"uber":             "Travel",
+	"ola":              "Travel",
+	"rapido":           "Travel",
+	"metro":            "Travel",
+	"irctc":            "Travel",
+	"makemytrip":       "Travel",
+	"goibibo":          "Travel",
+	"cleartrip":        "Travel",
+	"redbus":           "Travel",
+	"petrol pump":      "Travel",
+	"shell":            "Travel",
+	"hp":               "Travel",
+	"indian oil":       "Travel",
+	"bharat petroleum": "Travel",
 
 	// Shopping
 	"amazon":     "Amazon",
@@ -82,15 +90,15 @@ var VendorCategoryMapping = map[string]string{
 	"inox":           "Entertainment",
 
 	// Utilities
-	"electricity": "Utilities",
-	"water":       "Utilities",
-	"gas":         "Utilities",
-	"broadband":   "Utilities",
-	"jio":         "Utilities",
-	"airtel":      "Utilities",
-	"vodafone":    "Utilities",
-	"bsnl":        "Utilities",
-	"wifi":        "Utilities",
+	"electricity": "Bills",
+	"water":       "Bills",
+	"gas":         "Bills",
+	"broadband":   "Bills",
+	"jio":         "Bills",
+	"airtel":      "Bills",
+	"vodafone":    "Bills",
+	"bsnl":        "Bills",
+	"wifi":        "Bills",
 
 	// Healthcare
 	"apollo":    "Healthcare",
@@ -102,27 +110,20 @@ var VendorCategoryMapping = map[string]string{
 	"1mg":       "Healthcare",
 	"medplus":   "Healthcare",
 
-	// Education
-	"byju":       "Education",
-	"unacademy":  "Education",
-	"vedantu":    "Education",
-	"coursera":   "Education",
-	"udemy":      "Education",
-	"skillshare": "Education",
-
 	// Finance
-	"sip":              "Investment",
-	"mutual fund":      "Investment",
-	"fd":               "Investment",
-	"insurance":        "Insurance",
-	"lic":              "Insurance",
-	"hdfc life":        "Insurance",
-	"icici prudential": "Insurance",
-	"bescom":           "Electricity",
+	"sip":              "Other",
+	"mutual fund":      "Other",
+	"fd":               "Other",
+	"insurance":        "Bills",
+	"lic":              "Bills",
+	"hdfc life":        "Bills",
+	"icici prudential": "Bills",
+	"bescom":           "Bills",
 }
 
 // CategorizeTransaction determines the category based on vendor name
-func CategorizeTransaction(vendor string) string {
+// Uses manual mapping first, then MongoDB cache, then Gemini AI as fallback
+func CategorizeTransaction(vendor string, dbClient DatabaseClient, geminiClient *GeminiClient) string {
 	if vendor == "" {
 		return "Other"
 	}
@@ -130,15 +131,39 @@ func CategorizeTransaction(vendor string) string {
 	// Convert to lowercase for case-insensitive matching
 	vendorLower := strings.ToLower(vendor)
 
-	// Check for exact matches first
+	// 1. Check manual mapping first
 	if category, exists := VendorCategoryMapping[vendorLower]; exists {
 		return category
 	}
 
-	// Check for partial matches
+	// Check for partial matches in manual mapping
 	for mappedVendor, category := range VendorCategoryMapping {
 		if strings.Contains(vendorLower, mappedVendor) || strings.Contains(mappedVendor, vendorLower) {
 			return category
+		}
+	}
+
+	// 2. Check MongoDB cache
+	if dbClient != nil {
+		if cachedMapping, err := dbClient.GetCategoryMapping(vendorLower); err == nil && cachedMapping != nil {
+			return cachedMapping.Category
+		}
+	}
+
+	// 3. Use Gemini AI as fallback
+	if geminiClient != nil {
+		if aiCategory, err := geminiClient.ClassifyVendor(vendor); err == nil && aiCategory != "" {
+			// Save AI-generated mapping to MongoDB cache
+			if dbClient != nil {
+				mapping := &CategoryMapping{
+					Vendor:   vendorLower,
+					Category: aiCategory,
+					Source:   "ai",
+					Created:  time.Now(),
+				}
+				dbClient.SaveCategoryMapping(mapping)
+			}
+			return aiCategory
 		}
 	}
 
