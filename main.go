@@ -43,5 +43,14 @@ func main() {
 	}
 	defer dbClient.Close()
 
-	processEmails(srv, "me", dbClient)
+	// Create Gemini client for AI-powered vendor categorization (optional)
+	var geminiClient *GeminiClient
+	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
+		geminiClient = NewGeminiClient(apiKey)
+		fmt.Println("Gemini AI client initialized for smart vendor categorization")
+	} else {
+		fmt.Println("GEMINI_API_KEY not found - AI vendor categorization disabled")
+	}
+
+	processEmails(srv, "me", dbClient, geminiClient)
 }
