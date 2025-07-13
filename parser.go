@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func parseCreditCardTransaction(text string) *Transaction {
+func parseCreditCardTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
 	re := regexp.MustCompile(`Credit Card ending (\d+) for Rs ([\d,.]+) at (.*?) on (\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})`)
 	match := re.FindStringSubmatch(text)
 	if len(match) == 5 {
@@ -30,13 +30,13 @@ func parseCreditCardTransaction(text string) *Transaction {
 			Amount:     amount,
 			Vendor:     vendor,
 			DateTime:   dt,
-			Category:   CategorizeTransaction(vendor),
+			Category:   CategorizeTransaction(vendor, dbClient, geminiClient),
 		}
 	}
 	return nil
 }
 
-func parseBankTransaction(text string) *Transaction {
+func parseBankTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
 	re := regexp.MustCompile(`Your A/c (\w+) is debited for INR ([\d,\.]+) on (\d{2}-\d{2}-\d{2}) and A/c (\w+) is credited`)
 	match := re.FindStringSubmatch(text)
 	if len(match) == 5 {
@@ -63,7 +63,7 @@ func parseBankTransaction(text string) *Transaction {
 }
 
 // ICICI Credit Card Transaction
-func parseICICICreditCardTransaction(text string) *Transaction {
+func parseICICICreditCardTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
 	re := regexp.MustCompile(`ICICI Bank Credit Card (\w+) has been used for a transaction of INR ([\d,\.]+) on ([A-Za-z]+ \d{1,2}, \d{4}) at (\d{2}:\d{2}:\d{2})\. Info: (.+)\.`)
 	match := re.FindStringSubmatch(text)
 	if len(match) == 6 {
@@ -86,14 +86,14 @@ func parseICICICreditCardTransaction(text string) *Transaction {
 			Amount:     amount,
 			Vendor:     vendor,
 			DateTime:   dt,
-			Category:   CategorizeTransaction(vendor),
+			Category:   CategorizeTransaction(vendor, dbClient, geminiClient),
 		}
 	}
 	return nil
 }
 
 // Card Payment Transaction
-func parseCardPaymentTransaction(text string) *Transaction {
+func parseCardPaymentTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
 	re := regexp.MustCompile(`payment of [₹INR ]*([\d,\.]+) using iMobile towards (\w+) from your Account (\w+)`)
 	match := re.FindStringSubmatch(text)
 	if len(match) == 4 {
@@ -109,14 +109,14 @@ func parseCardPaymentTransaction(text string) *Transaction {
 			CardEnding:     vendor,
 			DebitedAccount: match[3],
 			Vendor:         vendor,
-			Category:       CategorizeTransaction(vendor),
+			Category:       CategorizeTransaction(vendor, dbClient, geminiClient),
 		}
 	}
 	return nil
 }
 
 // IMPS Payment Transaction
-func parseIMPSPaymentTransaction(text string) *Transaction {
+func parseIMPSPaymentTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
 	re := regexp.MustCompile(`You have made an online IMPS payment of Rs ([\d,\.]+) towards (.+) on ([A-Za-z]+ \d{2}, \d{4}) at (\d{2}:\d{2}) (a\.m\.|p\.m\.) from your .* Account (\w+)`)
 	match := re.FindStringSubmatch(text)
 	if len(match) == 7 {
@@ -145,7 +145,7 @@ func parseIMPSPaymentTransaction(text string) *Transaction {
 			Vendor:         vendor,
 			DateTime:       dt,
 			DebitedAccount: match[6],
-			Category:       CategorizeTransaction(vendor),
+			Category:       CategorizeTransaction(vendor, dbClient, geminiClient),
 		}
 	}
 	return nil
