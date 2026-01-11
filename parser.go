@@ -10,10 +10,38 @@ import (
 )
 
 func parseCreditCardTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
-	re := regexp.MustCompile(`Credit Card ending (\d+) for Rs ([\d,.]+) at (.*?) on (\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})`)
+	// Try new HDFC format: "Rs.304.00 is debited from your HDFC Bank Credit Card ending 4207 towards RAZORPAY LICIOUS on 09 Jan, 2026 at 16:28:26."
+	re := regexp.MustCompile(`Rs\.?([\d,\.]+)\s+is\s+debited\s+from\s+your\s+HDFC\s+Bank\s+Credit\s+Card\s+ending\s+(\d+)\s+towards\s+(.+?)\s+on\s+(\d{1,2}\s+[A-Za-z]{3},\s+\d{4})\s+at\s+(\d{2}:\d{2}:\d{2})`)
 	match := re.FindStringSubmatch(text)
+	if len(match) == 6 {
+		amount, err := strconv.ParseFloat(strings.ReplaceAll(match[1], ",", ""), 64)
+		if err != nil {
+			log.Printf("Error parsing amount: %v", err)
+			return nil
+		}
+		// Parse date format: "09 Jan, 2026 at 16:28:26"
+		datetimeStr := match[4] + " " + match[5]
+		dt, err := time.Parse("2 Jan, 2006 15:04:05", datetimeStr)
+		if err != nil {
+			log.Printf("Error parsing date: %v", err)
+			return nil
+		}
+		vendor := strings.TrimSpace(match[3])
+		return &Transaction{
+			Type:       "HDFCCreditCard",
+			CardEnding: match[2],
+			Amount:     amount,
+			Vendor:     vendor,
+			DateTime:   dt,
+			Category:   CategorizeTransaction(vendor, dbClient, geminiClient),
+		}
+	}
+
+	// Try original format: "Credit Card ending 1234 for Rs 100.00 at VENDOR on 01-01-2024 12:00:00"
+	re = regexp.MustCompile(`Credit Card ending (\d+) for Rs ([\d,.]+) at (.*?) on (\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})`)
+	match = re.FindStringSubmatch(text)
 	if len(match) == 5 {
-		amount, err := strconv.ParseFloat(match[2], 64)
+		amount, err := strconv.ParseFloat(strings.ReplaceAll(match[2], ",", ""), 64)
 		if err != nil {
 			log.Printf("Error parsing amount: %v", err)
 			return nil
@@ -23,7 +51,7 @@ func parseCreditCardTransaction(text string, dbClient DatabaseClient, geminiClie
 			log.Printf("Error parsing date: %v", err)
 			return nil
 		}
-		vendor := match[3]
+		vendor := strings.TrimSpace(match[3])
 		return &Transaction{
 			Type:       "HDFCCreditCard",
 			CardEnding: match[1],
@@ -64,7 +92,8 @@ func parseBankTransaction(text string, dbClient DatabaseClient, geminiClient *Ge
 
 // ICICI Credit Card Transaction
 func parseICICICreditCardTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
-	re := regexp.MustCompile(`ICICI Bank Credit Card (\w+) has been used for a transaction of INR ([\d,\.]+) on ([A-Za-z]+ \d{1,2}, \d{4}) at (\d{2}:\d{2}:\d{2})\. Info: (.+)\.`)
+	// Updated regex to stop vendor capture at first period followed by " The" (before "The Available Credit Limit")
+	re := regexp.MustCompile(`ICICI Bank Credit Card (\w+) has been used for a transaction of INR ([\d,\.]+) on ([A-Za-z]+ \d{1,2}, \d{4}) at (\d{2}:\d{2}:\d{2})\. Info: (.+?)\.\s+The`)
 	match := re.FindStringSubmatch(text)
 	if len(match) == 6 {
 		amount, err := strconv.ParseFloat(strings.ReplaceAll(match[2], ",", ""), 64)
@@ -79,7 +108,7 @@ func parseICICICreditCardTransaction(text string, dbClient DatabaseClient, gemin
 			log.Printf("Error parsing date: %v", err)
 			return nil
 		}
-		vendor := match[5]
+		vendor := strings.TrimSpace(match[5])
 		return &Transaction{
 			Type:       "ICICICreditCard",
 			CardEnding: match[1],

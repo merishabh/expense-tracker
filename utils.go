@@ -27,5 +27,9 @@ func decodeBase64URL(data string) string {
 
 func stripHTMLTags(html string) string {
 	re := regexp.MustCompile("<[^>]*>")
-	return re.ReplaceAllString(html, "")
+	text := re.ReplaceAllString(html, "")
+	// Normalize whitespace - replace multiple spaces/newlines with single space
+	re = regexp.MustCompile(`\s+`)
+	text = re.ReplaceAllString(text, " ")
+	return strings.TrimSpace(text)
 }
