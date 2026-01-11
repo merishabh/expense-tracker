@@ -31,8 +31,8 @@ func getMessageBody(payload *gmail.MessagePart) string {
 func processEmails(srv *gmail.Service, user string, dbClient DatabaseClient, geminiClient *GeminiClient) {
 	pageToken := ""
 	for {
-		// req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net OR from:customercare@icicibank.com OR from:credit_cards@icicibank.com newer_than:365d").MaxResults(500)
-		req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net newer_than:100d").MaxResults(500)
+		req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net OR from:customercare@icicibank.com OR from:credit_cards@icicibank.com newer_than:100d").MaxResults(500)
+		// req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net newer_than:100d").MaxResults(500)
 		if pageToken != "" {
 			req = req.PageToken(pageToken)
 		}
@@ -43,9 +43,17 @@ func processEmails(srv *gmail.Service, user string, dbClient DatabaseClient, gem
 		}
 
 		for _, msg := range res.Messages {
-			m, _ := srv.Users.Messages.Get(user, msg.Id).Format("full").Do()
+			m, err := srv.Users.Messages.Get(user, msg.Id).Format("full").Do()
+			if err != nil {
+				fmt.Printf("Error fetching message %s: %v\n", msg.Id, err)
+				continue
+			}
 
 			body := getMessageBody(m.Payload)
+			if body == "" {
+				fmt.Printf("⚠️ Empty body for message %s, skipping\n", msg.Id)
+				continue
+			}
 			cleanBody := stripHTMLTags(body)
 
 			var tx *Transaction
