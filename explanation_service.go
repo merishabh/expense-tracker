@@ -1,0 +1,195 @@
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+// ExplanationService handles converting aggregation results to explanations
+type ExplanationService struct {
+	explainer *GeminiExplainer
+}
+
+// NewExplanationService creates a new explanation service
+func NewExplanationService(apiKey string) (*ExplanationService, error) {
+	explainer, err := NewGeminiExplainer(apiKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ExplanationService{
+		explainer: explainer,
+	}, nil
+}
+
+// ExplainAggregation converts an aggregation result to a human-readable explanation
+func (s *ExplanationService) ExplainAggregation(
+	intent IntentType,
+	aggregationResult interface{},
+	userQuestion string,
+) (string, error) {
+	// Convert aggregation result to payload
+	payload, err := convertToPayload(intent, aggregationResult, userQuestion)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert aggregation result: %v", err)
+	}
+
+	// Build prompt
+	prompt, err := BuildPrompt(intent, payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to build prompt: %v", err)
+	}
+
+	// Generate explanation
+	explanation, err := s.explainer.GenerateExplanation(prompt)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate explanation: %v", err)
+	}
+
+	return explanation, nil
+}
+
+// convertToPayload converts aggregation results to payload structs
+func convertToPayload(intent IntentType, result interface{}, userQuestion string) (interface{}, error) {
+	switch intent {
+	case TOTAL_SPEND:
+		spendResult, ok := result.(SpendResult)
+		if !ok {
+			return nil, fmt.Errorf("invalid result type for TOTAL_SPEND: expected SpendResult")
+		}
+		return TotalSpendPayload{
+			Period:       spendResult.Period,
+			TotalSpent:   spendResult.TotalSpent,
+			Average:      spendResult.TotalSpent, // For total spend, average equals total
+			UserQuestion: userQuestion,
+		}, nil
+
+	case CATEGORY_SUMMARY:
+		categoryResult, ok := result.(CategorySpendResult)
+		if !ok {
+			return nil, fmt.Errorf("invalid result type for CATEGORY_SUMMARY: expected CategorySpendResult")
+		}
+		return CategoryInsightPayload{
+			Category:       categoryResult.Category,
+			Period:         categoryResult.Period,
+			TotalSpent:     categoryResult.TotalSpent,
+			AverageSpent:   categoryResult.Average,
+			Budget:         0, // Budget not available in aggregation result
+			BudgetExceeded: false,
+			DeltaPercent:   0, // Delta not calculated in aggregation
+			UserQuestion:   userQuestion,
+		}, nil
+
+	case PERIOD_COMPARISON, CATEGORY_COMPARISON:
+		comparisonResult, ok := result.(ComparisonResult)
+		if !ok {
+			return nil, fmt.Errorf("invalid result type for comparison: expected ComparisonResult")
+		}
+		return ComparisonPayload{
+			BasePeriod:    comparisonResult.BasePeriod,
+			ComparePeriod: comparisonResult.ComparePeriod,
+			BaseAmount:    comparisonResult.BaseAmount,
+			CompareAmount: comparisonResult.CompareAmount,
+			DeltaPercent:  comparisonResult.DeltaPercent,
+			UserQuestion:  userQuestion,
+		}, nil
+
+	case TOP_MERCHANTS:
+		merchantsResult, ok := result.(TopMerchantsResult)
+		if !ok {
+			return nil, fmt.Errorf("invalid result type for TOP_MERCHANTS: expected TopMerchantsResult")
+		}
+		return TopMerchantsPayload{
+			Period:       merchantsResult.Period,
+			Merchants:    merchantsResult.Merchants,
+			UserQuestion: userQuestion,
+		}, nil
+
+	case DAILY_TREND, MONTHLY_TREND:
+		trendData, ok := result.(map[string]float64)
+		if !ok {
+			return nil, fmt.Errorf("invalid result type for trend: expected map[string]float64")
+		}
+		// Period information is not included in trend results, use default
+		return TrendPayload{
+			Period:       "specified period",
+			TrendData:    trendData,
+			UserQuestion: userQuestion,
+		}, nil
+
+	case ANOMALY_EXPLANATION:
+		// Anomalies return map[string]interface{}, convert to general insight
+		anomalyData, ok := result.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid result type for ANOMALY_EXPLANATION: expected map[string]interface{}")
+		}
+		factsSummary := formatAnomalyFacts(anomalyData)
+		return GeneralInsightPayload{
+			FactsSummary: factsSummary,
+			UserQuestion: userQuestion,
+		}, nil
+
+	case BUDGET_STATUS, GENERAL_INSIGHT:
+		// For these, we need to format the result as facts summary
+		factsSummary := formatGeneralFacts(result)
+		return GeneralInsightPayload{
+			FactsSummary: factsSummary,
+			UserQuestion: userQuestion,
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported intent type for explanation: %s", intent.String())
+	}
+}
+
+// formatAnomalyFacts formats anomaly data as a facts summary string
+func formatAnomalyFacts(data map[string]interface{}) string {
+	var summary string
+	if period, ok := data["period"].(string); ok {
+		summary += fmt.Sprintf("Period: %s\n", period)
+	}
+	if avg, ok := data["average"].(float64); ok {
+		summary += fmt.Sprintf("Average spending: ₹%.2f\n", avg)
+	}
+	if threshold, ok := data["threshold"].(float64); ok {
+		summary += fmt.Sprintf("Anomaly threshold: ₹%.2f\n", threshold)
+	}
+	if count, ok := data["anomaly_count"].(int); ok {
+		summary += fmt.Sprintf("Number of anomalies: %d\n", count)
+	}
+	return summary
+}
+
+// formatGeneralFacts formats general result data as a facts summary string
+func formatGeneralFacts(result interface{}) string {
+	// Try to format common result types
+	switch v := result.(type) {
+	case SpendResult:
+		return fmt.Sprintf("Period: %s\nTotal spent: ₹%.2f", v.Period, v.TotalSpent)
+	case CategorySpendResult:
+		return fmt.Sprintf("Category: %s\nPeriod: %s\nTotal spent: ₹%.2f\nAverage: ₹%.2f",
+			v.Category, v.Period, v.TotalSpent, v.Average)
+	case ComparisonResult:
+		return fmt.Sprintf("Base period: %s (₹%.2f)\nCompare period: %s (₹%.2f)\nChange: %.2f%%",
+			v.BasePeriod, v.BaseAmount, v.ComparePeriod, v.CompareAmount, v.DeltaPercent)
+	default:
+		return fmt.Sprintf("Data: %v", result)
+	}
+}
+
+// Close closes the explanation service
+func (s *ExplanationService) Close() error {
+	if s.explainer != nil {
+		return s.explainer.Close()
+	}
+	return nil
+}
+
+// NewExplanationServiceFromEnv creates an explanation service using API key from environment
+func NewExplanationServiceFromEnv() (*ExplanationService, error) {
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("GEMINI_API_KEY environment variable is required")
+	}
+	return NewExplanationService(apiKey)
+}

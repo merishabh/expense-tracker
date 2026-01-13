@@ -32,7 +32,6 @@ func processEmails(srv *gmail.Service, user string, dbClient DatabaseClient, gem
 	pageToken := ""
 	for {
 		req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net OR from:customercare@icicibank.com OR from:credit_cards@icicibank.com newer_than:100d").MaxResults(500)
-		// req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net newer_than:100d").MaxResults(500)
 		if pageToken != "" {
 			req = req.PageToken(pageToken)
 		}

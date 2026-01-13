@@ -19,6 +19,15 @@ type AskGeminiResponse struct {
 	Error  string `json:"error,omitempty"`
 }
 
+type ClassifyIntentRequest struct {
+	Question string `json:"question"`
+}
+
+type ClassifyIntentResponse struct {
+	Intent *ExpenseIntent `json:"intent"`
+	Error  string         `json:"error,omitempty"`
+}
+
 func askGeminiHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
@@ -84,6 +93,54 @@ func askGeminiHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := AskGeminiResponse{Answer: answer}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func classifyIntentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req ClassifyIntentRequest
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.Question == "" {
+		http.Error(w, "Question is required", http.StatusBadRequest)
+		return
+	}
+
+	// Initialize Gemini client (no database queries needed)
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		log.Println("GEMINI_API_KEY not set")
+		resp := ClassifyIntentResponse{Error: "Gemini API key not configured"}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	geminiClient := NewGeminiClient(apiKey)
+	intent, err := geminiClient.ClassifyIntent(req.Question)
+	if err != nil {
+		log.Printf("Intent classification error: %v", err)
+		resp := ClassifyIntentResponse{Error: fmt.Sprintf("Failed to classify intent: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := ClassifyIntentResponse{Intent: intent}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -352,6 +409,7 @@ func serveStaticFiles(w http.ResponseWriter, r *http.Request) {
 func startAPIServer() {
 	// API routes
 	http.HandleFunc("/ask-gemini", askGeminiHandler)
+	http.HandleFunc("/classify-intent", classifyIntentHandler)
 	http.HandleFunc("/analytics", analyticsHandler)
 	http.HandleFunc("/insights", insightsHandler)
 	http.HandleFunc("/recommendations", recommendationsHandler)
@@ -365,6 +423,7 @@ func startAPIServer() {
 	log.Println("🌐 Frontend available at: http://localhost:8080")
 	log.Println("📊 Available API endpoints:")
 	log.Println("  POST /ask-gemini          - Ask AI questions about your spending")
+	log.Println("  POST /classify-intent     - Classify user question into validated intent JSON")
 	log.Println("  GET  /analytics           - Get comprehensive spending analytics")
 	log.Println("  GET  /insights            - Get spending insights and warnings")
 	log.Println("  GET  /recommendations     - Get budget recommendations")
@@ -373,6 +432,7 @@ func startAPIServer() {
 	log.Println()
 	log.Println("💡 Example usage:")
 	log.Println("  curl -X POST http://localhost:8080/ask-gemini -H 'Content-Type: application/json' -d '{\"question\": \"How much did I spend on food?\"}'")
+	log.Println("  curl -X POST http://localhost:8080/classify-intent -H 'Content-Type: application/json' -d '{\"question\": \"How much did I spend on food this month?\"}'")
 	log.Println("  curl -X GET http://localhost:8080/insights")
 	log.Println("  curl -X GET http://localhost:8080/score")
 
