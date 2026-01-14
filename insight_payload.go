@@ -32,16 +32,16 @@ type ComparisonPayload struct {
 
 // TopMerchantsPayload represents facts about top merchants for Gemini explanation
 type TopMerchantsPayload struct {
-	Period     string             `json:"period"`
-	Merchants  map[string]float64 `json:"merchants"`
-	UserQuestion string           `json:"user_question"`
+	Period       string             `json:"period"`
+	Merchants    map[string]float64 `json:"merchants"`
+	UserQuestion string             `json:"user_question"`
 }
 
 // TrendPayload represents facts about spending trends for Gemini explanation
 type TrendPayload struct {
-	Period      string             `json:"period"`
-	TrendData   map[string]float64 `json:"trend_data"`
-	UserQuestion string            `json:"user_question"`
+	Period       string             `json:"period"`
+	TrendData    map[string]float64 `json:"trend_data"`
+	UserQuestion string             `json:"user_question"`
 }
 
 // GeneralInsightPayload represents general facts for Gemini explanation

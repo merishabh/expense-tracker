@@ -165,7 +165,7 @@ func buildComparisonPrompt(p ComparisonPayload) string {
 func buildTopMerchantsPrompt(p TopMerchantsPayload) string {
 	prompt := TopMerchantsTemplate
 	prompt = strings.ReplaceAll(prompt, "{{Period}}", p.Period)
-	
+
 	// Build merchants list
 	var merchantsList strings.Builder
 	for merchant, amount := range p.Merchants {
@@ -179,7 +179,7 @@ func buildTopMerchantsPrompt(p TopMerchantsPayload) string {
 func buildTrendPrompt(p TrendPayload) string {
 	prompt := TrendTemplate
 	prompt = strings.ReplaceAll(prompt, "{{Period}}", p.Period)
-	
+
 	// Build trend data list
 	var trendList strings.Builder
 	for key, value := range p.TrendData {
