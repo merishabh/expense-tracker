@@ -1,4 +1,4 @@
-package main
+package services
 
 import (
 	"fmt"
@@ -7,9 +7,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yourusername/expense-tracker/ai"
+	"github.com/yourusername/expense-tracker/models"
 )
 
-func parseCreditCardTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
+func ParseCreditCardTransaction(text string, dbClient models.DatabaseClient, geminiClient *ai.GeminiClient) *models.Transaction {
 	// Try new HDFC format: "Rs.304.00 is debited from your HDFC Bank Credit Card ending 4207 towards RAZORPAY LICIOUS on 09 Jan, 2026 at 16:28:26."
 	re := regexp.MustCompile(`Rs\.?([\d,\.]+)\s+is\s+debited\s+from\s+your\s+HDFC\s+Bank\s+Credit\s+Card\s+ending\s+(\d+)\s+towards\s+(.+?)\s+on\s+(\d{1,2}\s+[A-Za-z]{3},\s+\d{4})\s+at\s+(\d{2}:\d{2}:\d{2})`)
 	match := re.FindStringSubmatch(text)
@@ -27,7 +30,7 @@ func parseCreditCardTransaction(text string, dbClient DatabaseClient, geminiClie
 			return nil
 		}
 		vendor := strings.TrimSpace(match[3])
-		return &Transaction{
+		return &models.Transaction{
 			Type:       "HDFCCreditCard",
 			CardEnding: match[2],
 			Amount:     amount,
@@ -52,7 +55,7 @@ func parseCreditCardTransaction(text string, dbClient DatabaseClient, geminiClie
 			return nil
 		}
 		vendor := strings.TrimSpace(match[3])
-		return &Transaction{
+		return &models.Transaction{
 			Type:       "HDFCCreditCard",
 			CardEnding: match[1],
 			Amount:     amount,
@@ -64,7 +67,7 @@ func parseCreditCardTransaction(text string, dbClient DatabaseClient, geminiClie
 	return nil
 }
 
-func parseBankTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
+func ParseBankTransaction(text string, dbClient models.DatabaseClient, geminiClient *ai.GeminiClient) *models.Transaction {
 	re := regexp.MustCompile(`Your A/c (\w+) is debited for INR ([\d,\.]+) on (\d{2}-\d{2}-\d{2}) and A/c (\w+) is credited`)
 	match := re.FindStringSubmatch(text)
 	if len(match) == 5 {
@@ -73,25 +76,25 @@ func parseBankTransaction(text string, dbClient DatabaseClient, geminiClient *Ge
 			log.Printf("Error parsing amount: %v", err)
 			return nil
 		}
-		dt, err := time.Parse("02-01-06", match[3])
+		// Parse date (assuming format is DD-MM-YY)
+		dateStr := match[3]
+		dt, err := time.Parse("02-01-06", dateStr)
 		if err != nil {
 			log.Printf("Error parsing date: %v", err)
 			return nil
 		}
-		return &Transaction{
-			Type:            "HDFCBankTransfer",
+		return &models.Transaction{
+			Type:            "BankTransfer",
 			DebitedAccount:  match[1],
 			CreditedAccount: match[4],
 			Amount:          amount,
 			DateTime:        dt,
-			Category:        "Transfer", // Bank transfers are typically just transfers
 		}
 	}
 	return nil
 }
 
-// ICICI Credit Card Transaction
-func parseICICICreditCardTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
+func ParseICICICreditCardTransaction(text string, dbClient models.DatabaseClient, geminiClient *ai.GeminiClient) *models.Transaction {
 	// Updated regex to stop vendor capture at first period followed by " The" (before "The Available Credit Limit")
 	re := regexp.MustCompile(`ICICI Bank Credit Card (\w+) has been used for a transaction of INR ([\d,\.]+) on ([A-Za-z]+ \d{1,2}, \d{4}) at (\d{2}:\d{2}:\d{2})\. Info: (.+?)\.\s+The`)
 	match := re.FindStringSubmatch(text)
@@ -109,7 +112,7 @@ func parseICICICreditCardTransaction(text string, dbClient DatabaseClient, gemin
 			return nil
 		}
 		vendor := strings.TrimSpace(match[5])
-		return &Transaction{
+		return &models.Transaction{
 			Type:       "ICICICreditCard",
 			CardEnding: match[1],
 			Amount:     amount,
@@ -122,7 +125,7 @@ func parseICICICreditCardTransaction(text string, dbClient DatabaseClient, gemin
 }
 
 // Card Payment Transaction
-func parseCardPaymentTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
+func ParseCardPaymentTransaction(text string, dbClient models.DatabaseClient, geminiClient *ai.GeminiClient) *models.Transaction {
 	re := regexp.MustCompile(`payment of [₹INR ]*([\d,\.]+) using iMobile towards (\w+) from your Account (\w+)`)
 	match := re.FindStringSubmatch(text)
 	if len(match) == 4 {
@@ -132,7 +135,7 @@ func parseCardPaymentTransaction(text string, dbClient DatabaseClient, geminiCli
 			return nil
 		}
 		vendor := match[2]
-		return &Transaction{
+		return &models.Transaction{
 			Type:           "ICICIBankTransfer",
 			Amount:         amount,
 			CardEnding:     vendor,
@@ -145,7 +148,7 @@ func parseCardPaymentTransaction(text string, dbClient DatabaseClient, geminiCli
 }
 
 // IMPS Payment Transaction
-func parseIMPSPaymentTransaction(text string, dbClient DatabaseClient, geminiClient *GeminiClient) *Transaction {
+func ParseIMPSPaymentTransaction(text string, dbClient models.DatabaseClient, geminiClient *ai.GeminiClient) *models.Transaction {
 	re := regexp.MustCompile(`You have made an online IMPS payment of Rs ([\d,\.]+) towards (.+) on ([A-Za-z]+ \d{2}, \d{4}) at (\d{2}:\d{2}) (a\.m\.|p\.m\.) from your .* Account (\w+)`)
 	match := re.FindStringSubmatch(text)
 	if len(match) == 7 {
@@ -168,7 +171,7 @@ func parseIMPSPaymentTransaction(text string, dbClient DatabaseClient, geminiCli
 			return nil
 		}
 		vendor := match[2] // payee
-		return &Transaction{
+		return &models.Transaction{
 			Type:           "ICICIIMPS",
 			Amount:         amount,
 			Vendor:         vendor,
@@ -178,4 +181,53 @@ func parseIMPSPaymentTransaction(text string, dbClient DatabaseClient, geminiCli
 		}
 	}
 	return nil
+}
+
+// CategorizeTransaction determines the category based on vendor name
+// Uses manual mapping first, then MongoDB cache, then Gemini AI as fallback
+func CategorizeTransaction(vendor string, dbClient models.DatabaseClient, geminiClient *ai.GeminiClient) string {
+	if vendor == "" {
+		return "Other"
+	}
+
+	// Convert to lowercase for case-insensitive matching
+	vendorLower := strings.ToLower(vendor)
+
+	// 1. Check manual mapping first
+	if category, exists := models.VendorCategoryMapping[vendorLower]; exists {
+		return category
+	}
+
+	// Check for partial matches in manual mapping
+	for mappedVendor, category := range models.VendorCategoryMapping {
+		if strings.Contains(vendorLower, mappedVendor) || strings.Contains(mappedVendor, vendorLower) {
+			return category
+		}
+	}
+
+	// 2. Check MongoDB cache
+	if dbClient != nil {
+		if cachedMapping, err := dbClient.GetCategoryMapping(vendorLower); err == nil && cachedMapping != nil {
+			return cachedMapping.Category
+		}
+	}
+
+	// 3. Use Gemini AI as fallback
+	if geminiClient != nil {
+		if aiCategory, err := geminiClient.ClassifyVendor(vendor); err == nil && aiCategory != "" {
+			// Save AI-generated mapping to MongoDB cache
+			if dbClient != nil {
+				mapping := &models.CategoryMapping{
+					Vendor:   vendorLower,
+					Category: aiCategory,
+					Source:   "ai",
+					Created:  time.Now(),
+				}
+				dbClient.SaveCategoryMapping(mapping)
+			}
+			return aiCategory
+		}
+	}
+
+	return "Other"
 }

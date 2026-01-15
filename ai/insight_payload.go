@@ -1,4 +1,4 @@
-package main
+package ai
 
 // CategoryInsightPayload represents facts about category spending for Gemini explanation
 type CategoryInsightPayload struct {

@@ -1,4 +1,4 @@
-package main
+package services
 
 import (
 	"context"
@@ -6,15 +6,18 @@ import (
 	"math"
 	"sort"
 	"time"
+
+	"github.com/yourusername/expense-tracker/models"
+	"github.com/yourusername/expense-tracker/utils"
 )
 
 // AggregationService handles data aggregation operations
 type AggregationService struct {
-	dbClient DatabaseClient
+	dbClient models.DatabaseClient
 }
 
 // NewAggregationService creates a new aggregation service
-func NewAggregationService(dbClient DatabaseClient) *AggregationService {
+func NewAggregationService(dbClient models.DatabaseClient) *AggregationService {
 	return &AggregationService{
 		dbClient: dbClient,
 	}
@@ -22,7 +25,7 @@ func NewAggregationService(dbClient DatabaseClient) *AggregationService {
 
 // GetTotalSpend calculates total spending for a given period
 func (s *AggregationService) GetTotalSpend(ctx context.Context, period string) (SpendResult, error) {
-	start, end, err := ResolvePeriod(period)
+	start, end, err := utils.ResolvePeriod(period)
 	if err != nil {
 		return SpendResult{}, err
 	}
@@ -49,7 +52,7 @@ func (s *AggregationService) GetCategorySpend(ctx context.Context, category, per
 		return CategorySpendResult{}, fmt.Errorf("category is required")
 	}
 
-	start, end, err := ResolvePeriod(period)
+	start, end, err := utils.ResolvePeriod(period)
 	if err != nil {
 		return CategorySpendResult{}, err
 	}
@@ -87,7 +90,7 @@ func (s *AggregationService) CompareCategories(ctx context.Context, c1, c2, peri
 		return nil, fmt.Errorf("both categories are required")
 	}
 
-	start, end, err := ResolvePeriod(period)
+	start, end, err := utils.ResolvePeriod(period)
 	if err != nil {
 		return nil, err
 	}
@@ -116,12 +119,12 @@ func (s *AggregationService) CompareCategories(ctx context.Context, c1, c2, peri
 
 // ComparePeriods compares spending between two periods
 func (s *AggregationService) ComparePeriods(ctx context.Context, p1, p2 string) (ComparisonResult, error) {
-	start1, end1, err := ResolvePeriod(p1)
+	start1, end1, err := utils.ResolvePeriod(p1)
 	if err != nil {
 		return ComparisonResult{}, err
 	}
 
-	start2, end2, err := ResolvePeriod(p2)
+	start2, end2, err := utils.ResolvePeriod(p2)
 	if err != nil {
 		return ComparisonResult{}, err
 	}
@@ -166,7 +169,7 @@ func (s *AggregationService) GetTopMerchants(ctx context.Context, period string,
 		limit = 10 // default limit
 	}
 
-	start, end, err := ResolvePeriod(period)
+	start, end, err := utils.ResolvePeriod(period)
 	if err != nil {
 		return TopMerchantsResult{}, err
 	}
@@ -214,7 +217,7 @@ func (s *AggregationService) GetTopMerchants(ctx context.Context, period string,
 
 // GetDailyTrend gets daily spending trend for a period
 func (s *AggregationService) GetDailyTrend(ctx context.Context, period string) (map[string]float64, error) {
-	start, end, err := ResolvePeriod(period)
+	start, end, err := utils.ResolvePeriod(period)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +262,7 @@ func (s *AggregationService) GetMonthlyTrend(ctx context.Context, months int) (m
 
 // GetAnomalies identifies transactions that are significantly above average (anomalies)
 func (s *AggregationService) GetAnomalies(ctx context.Context, period string) (map[string]interface{}, error) {
-	start, end, err := ResolvePeriod(period)
+	start, end, err := utils.ResolvePeriod(period)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +300,7 @@ func (s *AggregationService) GetAnomalies(ctx context.Context, period string) (m
 	}
 
 	// Find anomalies
-	anomalies := make([]Transaction, 0)
+	anomalies := make([]models.Transaction, 0)
 	for _, tx := range transactions {
 		if tx.Amount > threshold {
 			anomalies = append(anomalies, tx)
@@ -316,13 +319,13 @@ func (s *AggregationService) GetAnomalies(ctx context.Context, period string) (m
 }
 
 // fetchTransactionsInRange fetches transactions within a date range
-func (s *AggregationService) fetchTransactionsInRange(ctx context.Context, start, end time.Time) ([]Transaction, error) {
+func (s *AggregationService) fetchTransactionsInRange(ctx context.Context, start, end time.Time) ([]models.Transaction, error) {
 	allTransactions, err := s.dbClient.FetchAllTransactions()
 	if err != nil {
 		return nil, err
 	}
 
-	var filtered []Transaction
+	var filtered []models.Transaction
 	for _, tx := range allTransactions {
 		// Convert to UTC for comparison
 		txTime := tx.DateTime.UTC()

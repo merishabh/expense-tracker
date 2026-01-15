@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -12,11 +12,11 @@ import (
 )
 
 var (
-	config *oauth2.Config
+	Config *oauth2.Config
 	state  = "randomstatestring"
 )
 
-func getClient() *http.Client {
+func GetClient() *http.Client {
 	tokFile := "credentials/token.json"
 	tok, err := tokenFromFile(tokFile)
 	if err != nil {
@@ -26,12 +26,12 @@ func getClient() *http.Client {
 	}
 
 	// Create client that will automatically refresh the token
-	client := config.Client(context.Background(), tok)
+	client := Config.Client(context.Background(), tok)
 
 	// Check if we need to save the refreshed token
 	if tok.RefreshToken != "" {
 		// Create a token source that will automatically handle refresh
-		tokenSource := config.TokenSource(context.Background(), tok)
+		tokenSource := Config.TokenSource(context.Background(), tok)
 		newTok, err := tokenSource.Token()
 		if err == nil && newTok.AccessToken != tok.AccessToken {
 			// Token was refreshed, save it
@@ -69,13 +69,13 @@ func StartAuthServer() *oauth2.Token {
 		}
 	}()
 
-	authURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", "consent"))
+	authURL := Config.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", "consent"))
 	fmt.Printf("Open this URL in your browser:\n%v\n", authURL)
 
 	code := <-codeCh
 	srv.Shutdown(context.Background())
 
-	token, err := config.Exchange(context.Background(), code)
+	token, err := Config.Exchange(context.Background(), code)
 	if err != nil {
 		log.Fatalf("Unable to exchange code for token: %v", err)
 	}

@@ -1,4 +1,4 @@
-package main
+package ai
 
 const (
 	// CategorySummaryTemplate is the prompt template for CATEGORY_SUMMARY intent

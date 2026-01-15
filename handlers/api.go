@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
@@ -8,6 +8,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/yourusername/expense-tracker/ai"
+	"github.com/yourusername/expense-tracker/models"
+	"github.com/yourusername/expense-tracker/services"
 )
 
 type AskGeminiRequest struct {
@@ -24,8 +28,8 @@ type ClassifyIntentRequest struct {
 }
 
 type ClassifyIntentResponse struct {
-	Intent *ExpenseIntent `json:"intent"`
-	Error  string         `json:"error,omitempty"`
+	Intent *ai.ExpenseIntent `json:"intent"`
+	Error  string            `json:"error,omitempty"`
 }
 
 func askGeminiHandler(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +56,7 @@ func askGeminiHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Initialize database client
-	dbClient, err := NewDatabaseClient()
+	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
 		log.Printf("Failed to create database client: %v", err)
 		resp := AskGeminiResponse{Error: "Database connection failed"}
@@ -82,7 +86,7 @@ func askGeminiHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	geminiClient := NewGeminiClient(apiKey)
+	geminiClient := ai.NewGeminiClient(apiKey)
 	answer, err := geminiClient.AskGemini(transactions, req.Question)
 	if err != nil {
 		log.Printf("Gemini API error: %v", err)
@@ -130,7 +134,7 @@ func classifyIntentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	geminiClient := NewGeminiClient(apiKey)
+	geminiClient := ai.NewGeminiClient(apiKey)
 	intent, err := geminiClient.ClassifyIntent(req.Question)
 	if err != nil {
 		log.Printf("Intent classification error: %v", err)
@@ -146,18 +150,18 @@ func classifyIntentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type AnalyticsResponse struct {
-	Analytics *SpendingAnalytics `json:"analytics"`
-	Error     string             `json:"error,omitempty"`
+	Analytics *ai.SpendingAnalytics `json:"analytics"`
+	Error     string                `json:"error,omitempty"`
 }
 
 type InsightsResponse struct {
-	Insights []SpendingInsight `json:"insights"`
-	Error    string            `json:"error,omitempty"`
+	Insights []services.SpendingInsight `json:"insights"`
+	Error    string                     `json:"error,omitempty"`
 }
 
 type RecommendationsResponse struct {
-	Recommendations []BudgetRecommendation `json:"recommendations"`
-	Error           string                 `json:"error,omitempty"`
+	Recommendations []services.BudgetRecommendation `json:"recommendations"`
+	Error           string                          `json:"error,omitempty"`
 }
 
 type ScoreResponse struct {
@@ -178,7 +182,7 @@ func analyticsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Initialize database client
-	dbClient, err := NewDatabaseClient()
+	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
 		log.Printf("Failed to create database client: %v", err)
 		http.Error(w, "Database connection failed", http.StatusInternalServerError)
@@ -201,7 +205,7 @@ func analyticsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Gemini API key not configured", http.StatusInternalServerError)
 		return
 	}
-	geminiClient := NewGeminiClient(apiKey)
+	geminiClient := ai.NewGeminiClient(apiKey)
 
 	// Generate analytics
 	analytics := geminiClient.AnalyzeTransactions(transactions)
@@ -218,7 +222,7 @@ func insightsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get transactions and generate analytics
-	dbClient, err := NewDatabaseClient()
+	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
 		resp := InsightsResponse{Error: "Database connection failed"}
 		w.Header().Set("Content-Type", "application/json")
@@ -242,11 +246,11 @@ func insightsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	geminiClient := NewGeminiClient(apiKey)
+	geminiClient := ai.NewGeminiClient(apiKey)
 	analytics := geminiClient.AnalyzeTransactions(transactions)
 
 	// Generate insights
-	analyticsService := NewAnalyticsService()
+	analyticsService := services.NewAnalyticsService()
 	insights := analyticsService.GenerateInsights(analytics)
 
 	resp := InsightsResponse{Insights: insights}
@@ -261,7 +265,7 @@ func recommendationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get transactions and generate analytics
-	dbClient, err := NewDatabaseClient()
+	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
 		resp := RecommendationsResponse{Error: "Database connection failed"}
 		w.Header().Set("Content-Type", "application/json")
@@ -285,11 +289,11 @@ func recommendationsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	geminiClient := NewGeminiClient(apiKey)
+	geminiClient := ai.NewGeminiClient(apiKey)
 	analytics := geminiClient.AnalyzeTransactions(transactions)
 
 	// Generate recommendations
-	analyticsService := NewAnalyticsService()
+	analyticsService := services.NewAnalyticsService()
 	recommendations := analyticsService.GenerateBudgetRecommendations(analytics)
 
 	resp := RecommendationsResponse{Recommendations: recommendations}
@@ -304,7 +308,7 @@ func scoreHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get transactions and generate analytics
-	dbClient, err := NewDatabaseClient()
+	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
 		resp := ScoreResponse{Error: "Database connection failed"}
 		w.Header().Set("Content-Type", "application/json")
@@ -328,11 +332,11 @@ func scoreHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	geminiClient := NewGeminiClient(apiKey)
+	geminiClient := ai.NewGeminiClient(apiKey)
 	analytics := geminiClient.AnalyzeTransactions(transactions)
 
 	// Calculate score
-	analyticsService := NewAnalyticsService()
+	analyticsService := services.NewAnalyticsService()
 	score, explanation := analyticsService.CalculateSpendingScore(analytics)
 
 	resp := ScoreResponse{Score: score, Explanation: explanation}
@@ -347,7 +351,7 @@ func predictionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get transactions and generate analytics
-	dbClient, err := NewDatabaseClient()
+	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
 		resp := PredictionsResponse{Error: "Database connection failed"}
 		w.Header().Set("Content-Type", "application/json")
@@ -371,11 +375,11 @@ func predictionsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	geminiClient := NewGeminiClient(apiKey)
+	geminiClient := ai.NewGeminiClient(apiKey)
 	analytics := geminiClient.AnalyzeTransactions(transactions)
 
 	// Generate predictions
-	analyticsService := NewAnalyticsService()
+	analyticsService := services.NewAnalyticsService()
 	predictions := analyticsService.PredictNextMonthSpending(analytics)
 
 	resp := PredictionsResponse{Predictions: predictions}
@@ -387,18 +391,18 @@ func predictionsHandler(w http.ResponseWriter, r *http.Request) {
 func serveStaticFiles(w http.ResponseWriter, r *http.Request) {
 	// Serve the index.html file for root path
 	if r.URL.Path == "/" {
-		http.ServeFile(w, r, "static/index.html")
+		http.ServeFile(w, r, "frontend/index.html")
 		return
 	}
 
 	// Remove the leading slash and serve from static directory
 	path := r.URL.Path[1:]
-	fullPath := filepath.Join("static", path)
+	fullPath := filepath.Join("frontend", path)
 
 	// Check if file exists
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		// If file doesn't exist, serve index.html (for SPA routing)
-		http.ServeFile(w, r, "static/index.html")
+		http.ServeFile(w, r, "frontend/index.html")
 		return
 	}
 
@@ -406,7 +410,7 @@ func serveStaticFiles(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, fullPath)
 }
 
-func startAPIServer() {
+func StartAPIServer() {
 	// API routes
 	http.HandleFunc("/ask-gemini", askGeminiHandler)
 	http.HandleFunc("/classify-intent", classifyIntentHandler)

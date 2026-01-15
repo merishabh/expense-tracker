@@ -1,7 +1,6 @@
-package main
+package models
 
 import (
-	"strings"
 	"time"
 )
 
@@ -119,53 +118,4 @@ var VendorCategoryMapping = map[string]string{
 	"hdfc life":        "Bills",
 	"icici prudential": "Bills",
 	"bescom":           "Bills",
-}
-
-// CategorizeTransaction determines the category based on vendor name
-// Uses manual mapping first, then MongoDB cache, then Gemini AI as fallback
-func CategorizeTransaction(vendor string, dbClient DatabaseClient, geminiClient *GeminiClient) string {
-	if vendor == "" {
-		return "Other"
-	}
-
-	// Convert to lowercase for case-insensitive matching
-	vendorLower := strings.ToLower(vendor)
-
-	// 1. Check manual mapping first
-	if category, exists := VendorCategoryMapping[vendorLower]; exists {
-		return category
-	}
-
-	// Check for partial matches in manual mapping
-	for mappedVendor, category := range VendorCategoryMapping {
-		if strings.Contains(vendorLower, mappedVendor) || strings.Contains(mappedVendor, vendorLower) {
-			return category
-		}
-	}
-
-	// 2. Check MongoDB cache
-	if dbClient != nil {
-		if cachedMapping, err := dbClient.GetCategoryMapping(vendorLower); err == nil && cachedMapping != nil {
-			return cachedMapping.Category
-		}
-	}
-
-	// 3. Use Gemini AI as fallback
-	if geminiClient != nil {
-		if aiCategory, err := geminiClient.ClassifyVendor(vendor); err == nil && aiCategory != "" {
-			// Save AI-generated mapping to MongoDB cache
-			if dbClient != nil {
-				mapping := &CategoryMapping{
-					Vendor:   vendorLower,
-					Category: aiCategory,
-					Source:   "ai",
-					Created:  time.Now(),
-				}
-				dbClient.SaveCategoryMapping(mapping)
-			}
-			return aiCategory
-		}
-	}
-
-	return "Other"
 }

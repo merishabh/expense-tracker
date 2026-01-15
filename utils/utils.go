@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"encoding/base64"
@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func decodeBase64URL(data string) string {
+func DecodeBase64URL(data string) string {
 	data = strings.ReplaceAll(data, "-", "+")
 	data = strings.ReplaceAll(data, "_", "/")
 	switch len(data) % 4 {
@@ -25,7 +25,7 @@ func decodeBase64URL(data string) string {
 	return string(decoded)
 }
 
-func stripHTMLTags(html string) string {
+func StripHTMLTags(html string) string {
 	re := regexp.MustCompile("<[^>]*>")
 	text := re.ReplaceAllString(html, "")
 	// Normalize whitespace - replace multiple spaces/newlines with single space
