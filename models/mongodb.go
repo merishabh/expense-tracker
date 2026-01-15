@@ -1,4 +1,4 @@
-package main
+package models
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/yourusername/expense-tracker/utils"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -95,7 +97,7 @@ func (m *MongoClient) SaveUnparsedEmail(body string, headers map[string]string) 
 
 	doc := bson.M{
 		"body":      body,
-		"body_text": stripHTMLTags(body),
+		"body_text": utils.StripHTMLTags(body),
 		"headers":   headers,
 		"timestamp": time.Now(),
 	}

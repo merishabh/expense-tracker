@@ -1,7 +1,11 @@
-package main
+package services
 
 import (
 	"fmt"
+
+	"github.com/yourusername/expense-tracker/ai"
+	"github.com/yourusername/expense-tracker/models"
+	"github.com/yourusername/expense-tracker/utils"
 
 	"google.golang.org/api/gmail/v1"
 )
@@ -12,11 +16,11 @@ func getMessageBody(payload *gmail.MessagePart) string {
 	}
 	// Prefer text/plain
 	if payload.MimeType == "text/plain" && payload.Body != nil && payload.Body.Data != "" {
-		return decodeBase64URL(payload.Body.Data)
+		return utils.DecodeBase64URL(payload.Body.Data)
 	}
 	// Fallback to text/html
 	if payload.MimeType == "text/html" && payload.Body != nil && payload.Body.Data != "" {
-		return decodeBase64URL(payload.Body.Data)
+		return utils.DecodeBase64URL(payload.Body.Data)
 	}
 	// Recursively check parts
 	for _, part := range payload.Parts {
@@ -28,7 +32,7 @@ func getMessageBody(payload *gmail.MessagePart) string {
 	return ""
 }
 
-func processEmails(srv *gmail.Service, user string, dbClient DatabaseClient, geminiClient *GeminiClient) {
+func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClient, geminiClient *ai.GeminiClient) {
 	pageToken := ""
 	for {
 		req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net OR from:customercare@icicibank.com OR from:credit_cards@icicibank.com newer_than:100d").MaxResults(500)
@@ -53,19 +57,19 @@ func processEmails(srv *gmail.Service, user string, dbClient DatabaseClient, gem
 				fmt.Printf("⚠️ Empty body for message %s, skipping\n", msg.Id)
 				continue
 			}
-			cleanBody := stripHTMLTags(body)
+			cleanBody := utils.StripHTMLTags(body)
 
-			var tx *Transaction
+			var tx *models.Transaction
 
-			if tx = parseICICICreditCardTransaction(cleanBody, dbClient, geminiClient); tx != nil {
+			if tx = ParseICICICreditCardTransaction(cleanBody, dbClient, geminiClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = parseCreditCardTransaction(cleanBody, dbClient, geminiClient); tx != nil {
+			} else if tx = ParseCreditCardTransaction(cleanBody, dbClient, geminiClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = parseCardPaymentTransaction(cleanBody, dbClient, geminiClient); tx != nil {
+			} else if tx = ParseCardPaymentTransaction(cleanBody, dbClient, geminiClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = parseIMPSPaymentTransaction(cleanBody, dbClient, geminiClient); tx != nil {
+			} else if tx = ParseIMPSPaymentTransaction(cleanBody, dbClient, geminiClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = parseBankTransaction(cleanBody, dbClient, geminiClient); tx != nil {
+			} else if tx = ParseBankTransaction(cleanBody, dbClient, geminiClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
 			} else {
 				fmt.Println("⚠️ No known transaction format detected.")

@@ -1,18 +1,20 @@
-package main
+package services
 
 import (
 	"fmt"
 	"os"
+
+	"github.com/yourusername/expense-tracker/ai"
 )
 
 // ExplanationService handles converting aggregation results to explanations
 type ExplanationService struct {
-	explainer *GeminiExplainer
+	explainer *ai.GeminiExplainer
 }
 
 // NewExplanationService creates a new explanation service
 func NewExplanationService(apiKey string) (*ExplanationService, error) {
-	explainer, err := NewGeminiExplainer(apiKey)
+	explainer, err := ai.NewGeminiExplainer(apiKey)
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +26,7 @@ func NewExplanationService(apiKey string) (*ExplanationService, error) {
 
 // ExplainAggregation converts an aggregation result to a human-readable explanation
 func (s *ExplanationService) ExplainAggregation(
-	intent IntentType,
+	intent ai.IntentType,
 	aggregationResult interface{},
 	userQuestion string,
 ) (string, error) {
@@ -35,7 +37,7 @@ func (s *ExplanationService) ExplainAggregation(
 	}
 
 	// Build prompt
-	prompt, err := BuildPrompt(intent, payload)
+	prompt, err := ai.BuildPrompt(intent, payload)
 	if err != nil {
 		return "", fmt.Errorf("failed to build prompt: %v", err)
 	}
@@ -50,26 +52,26 @@ func (s *ExplanationService) ExplainAggregation(
 }
 
 // convertToPayload converts aggregation results to payload structs
-func convertToPayload(intent IntentType, result interface{}, userQuestion string) (interface{}, error) {
+func convertToPayload(intent ai.IntentType, result interface{}, userQuestion string) (interface{}, error) {
 	switch intent {
-	case TOTAL_SPEND:
+	case ai.TOTAL_SPEND:
 		spendResult, ok := result.(SpendResult)
 		if !ok {
 			return nil, fmt.Errorf("invalid result type for TOTAL_SPEND: expected SpendResult")
 		}
-		return TotalSpendPayload{
+		return ai.TotalSpendPayload{
 			Period:       spendResult.Period,
 			TotalSpent:   spendResult.TotalSpent,
 			Average:      spendResult.TotalSpent, // For total spend, average equals total
 			UserQuestion: userQuestion,
 		}, nil
 
-	case CATEGORY_SUMMARY:
+	case ai.CATEGORY_SUMMARY:
 		categoryResult, ok := result.(CategorySpendResult)
 		if !ok {
 			return nil, fmt.Errorf("invalid result type for CATEGORY_SUMMARY: expected CategorySpendResult")
 		}
-		return CategoryInsightPayload{
+		return ai.CategoryInsightPayload{
 			Category:       categoryResult.Category,
 			Period:         categoryResult.Period,
 			TotalSpent:     categoryResult.TotalSpent,
@@ -80,12 +82,12 @@ func convertToPayload(intent IntentType, result interface{}, userQuestion string
 			UserQuestion:   userQuestion,
 		}, nil
 
-	case PERIOD_COMPARISON, CATEGORY_COMPARISON:
+	case ai.PERIOD_COMPARISON, ai.CATEGORY_COMPARISON:
 		comparisonResult, ok := result.(ComparisonResult)
 		if !ok {
 			return nil, fmt.Errorf("invalid result type for comparison: expected ComparisonResult")
 		}
-		return ComparisonPayload{
+		return ai.ComparisonPayload{
 			BasePeriod:    comparisonResult.BasePeriod,
 			ComparePeriod: comparisonResult.ComparePeriod,
 			BaseAmount:    comparisonResult.BaseAmount,
@@ -94,45 +96,45 @@ func convertToPayload(intent IntentType, result interface{}, userQuestion string
 			UserQuestion:  userQuestion,
 		}, nil
 
-	case TOP_MERCHANTS:
+	case ai.TOP_MERCHANTS:
 		merchantsResult, ok := result.(TopMerchantsResult)
 		if !ok {
 			return nil, fmt.Errorf("invalid result type for TOP_MERCHANTS: expected TopMerchantsResult")
 		}
-		return TopMerchantsPayload{
+		return ai.TopMerchantsPayload{
 			Period:       merchantsResult.Period,
 			Merchants:    merchantsResult.Merchants,
 			UserQuestion: userQuestion,
 		}, nil
 
-	case DAILY_TREND, MONTHLY_TREND:
+	case ai.DAILY_TREND, ai.MONTHLY_TREND:
 		trendData, ok := result.(map[string]float64)
 		if !ok {
 			return nil, fmt.Errorf("invalid result type for trend: expected map[string]float64")
 		}
 		// Period information is not included in trend results, use default
-		return TrendPayload{
+		return ai.TrendPayload{
 			Period:       "specified period",
 			TrendData:    trendData,
 			UserQuestion: userQuestion,
 		}, nil
 
-	case ANOMALY_EXPLANATION:
+	case ai.ANOMALY_EXPLANATION:
 		// Anomalies return map[string]interface{}, convert to general insight
 		anomalyData, ok := result.(map[string]interface{})
 		if !ok {
 			return nil, fmt.Errorf("invalid result type for ANOMALY_EXPLANATION: expected map[string]interface{}")
 		}
 		factsSummary := formatAnomalyFacts(anomalyData)
-		return GeneralInsightPayload{
+		return ai.GeneralInsightPayload{
 			FactsSummary: factsSummary,
 			UserQuestion: userQuestion,
 		}, nil
 
-	case BUDGET_STATUS, GENERAL_INSIGHT:
+	case ai.BUDGET_STATUS, ai.GENERAL_INSIGHT:
 		// For these, we need to format the result as facts summary
 		factsSummary := formatGeneralFacts(result)
-		return GeneralInsightPayload{
+		return ai.GeneralInsightPayload{
 			FactsSummary: factsSummary,
 			UserQuestion: userQuestion,
 		}, nil

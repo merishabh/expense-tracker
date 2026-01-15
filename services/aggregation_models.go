@@ -1,4 +1,4 @@
-package main
+package services
 
 // SpendResult represents total spending for a period
 type SpendResult struct {

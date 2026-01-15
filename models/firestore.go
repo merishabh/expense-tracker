@@ -1,4 +1,4 @@
-package main
+package models
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/yourusername/expense-tracker/utils"
 
 	"cloud.google.com/go/firestore"
 	"google.golang.org/api/iterator"
@@ -74,7 +76,7 @@ func (f *FirestoreClient) FetchAllTransactions() ([]Transaction, error) {
 func (f *FirestoreClient) SaveUnparsedEmail(body string, headers map[string]string) error {
 	doc := map[string]interface{}{
 		"body":      body,
-		"body_text": stripHTMLTags(body),
+		"body_text": utils.StripHTMLTags(body),
 		"headers":   headers,
 		"timestamp": time.Now(),
 	}

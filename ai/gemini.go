@@ -1,4 +1,4 @@
-package main
+package ai
 
 import (
 	context "context"
@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/yourusername/expense-tracker/models"
 
 	genai "github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
@@ -27,7 +29,7 @@ type SpendingAnalytics struct {
 	AverageTransaction float64                    `json:"average_transaction"`
 	MonthlyTrends      []MonthlyTrend             `json:"monthly_trends"`
 	CategoryInsights   map[string]CategoryInsight `json:"category_insights"`
-	RecentTransactions []Transaction              `json:"recent_transactions"`
+	RecentTransactions []models.Transaction       `json:"recent_transactions"`
 }
 
 type VendorSpending struct {
@@ -231,14 +233,14 @@ func NewGeminiClient(apiKey string) *GeminiClient {
 }
 
 // AnalyzeTransactions creates comprehensive analytics from raw transactions
-func (g *GeminiClient) AnalyzeTransactions(transactions []Transaction) *SpendingAnalytics {
+func (g *GeminiClient) AnalyzeTransactions(transactions []models.Transaction) *SpendingAnalytics {
 	analytics := &SpendingAnalytics{
 		SpendingByCategory: make(map[string]float64),
 		SpendingByMonth:    make(map[string]float64),
 		CategoryInsights:   make(map[string]CategoryInsight),
 	}
 
-	categoryTransactions := make(map[string][]Transaction)
+	categoryTransactions := make(map[string][]models.Transaction)
 	vendorSpending := make(map[string]*VendorSpending)
 	monthlyData := make(map[string]*MonthlyTrend)
 
@@ -582,38 +584,15 @@ func (g *GeminiClient) classifyQuestionFallback(question string) QuestionType {
 func (g *GeminiClient) BuildPrompt(analytics *SpendingAnalytics, question string, questionType QuestionType) string {
 	analyticsJSON, _ := json.MarshalIndent(analytics, "", "  ")
 
-	// Generate additional insights
-	analyticsService := NewAnalyticsService()
-	insights := analyticsService.GenerateInsights(analytics)
-	recommendations := analyticsService.GenerateBudgetRecommendations(analytics)
-	score, scoreExplanation := analyticsService.CalculateSpendingScore(analytics)
-	predictions := analyticsService.PredictNextMonthSpending(analytics)
-
-	insightsJSON, _ := json.MarshalIndent(insights, "", "  ")
-	recommendationsJSON, _ := json.MarshalIndent(recommendations, "", "  ")
-	predictionsJSON, _ := json.MarshalIndent(predictions, "", "  ")
-
 	baseContext := fmt.Sprintf(`You are a personal finance advisor analyzing spending data. Here is the comprehensive analysis:
 
 SPENDING ANALYTICS:
 %s
 
-FINANCIAL HEALTH SCORE: %d/100
-%s
-
-INSIGHTS & WARNINGS:
-%s
-
-BUDGET RECOMMENDATIONS:
-%s
-
-NEXT MONTH PREDICTIONS:
-%s
-
 Current date: %s
 Analysis period: Covers transactions from the data above
 
-`, analyticsJSON, score, scoreExplanation, insightsJSON, recommendationsJSON, predictionsJSON, time.Now().Format("January 2, 2006"))
+`, analyticsJSON, time.Now().Format("January 2, 2006"))
 
 	switch questionType {
 	case SpendingAmount:
@@ -696,7 +675,7 @@ Please provide a comprehensive financial analysis and answer based on the spendi
 }
 
 // AskGemini sends structured analytics and an intelligent prompt to Gemini API
-func (g *GeminiClient) AskGemini(transactions []Transaction, question string) (string, error) {
+func (g *GeminiClient) AskGemini(transactions []models.Transaction, question string) (string, error) {
 	ctx := context.Background()
 
 	// Analyze transactions to create structured data

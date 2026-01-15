@@ -1,13 +1,16 @@
-package main
+package services
 
 import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/yourusername/expense-tracker/ai"
+	"github.com/yourusername/expense-tracker/models"
 )
 
 // ExecuteAggregation routes an intent to the appropriate aggregation function
-func ExecuteAggregation(ctx context.Context, intent ExpenseIntent, dbClient DatabaseClient) (interface{}, error) {
+func ExecuteAggregation(ctx context.Context, intent ai.ExpenseIntent, dbClient models.DatabaseClient) (interface{}, error) {
 	service := NewAggregationService(dbClient)
 
 	// Validate required parameters before querying
@@ -22,10 +25,10 @@ func ExecuteAggregation(ctx context.Context, intent ExpenseIntent, dbClient Data
 	}
 
 	switch intent.IntentType {
-	case TOTAL_SPEND:
+	case ai.TOTAL_SPEND:
 		return service.GetTotalSpend(ctx, period)
 
-	case CATEGORY_SUMMARY:
+	case ai.CATEGORY_SUMMARY:
 		category := intent.Category
 		if category == "" {
 			// Try to get from parameters
@@ -38,7 +41,7 @@ func ExecuteAggregation(ctx context.Context, intent ExpenseIntent, dbClient Data
 		}
 		return service.GetCategorySpend(ctx, category, period)
 
-	case CATEGORY_COMPARISON:
+	case ai.CATEGORY_COMPARISON:
 		var cat1, cat2 string
 		if intent.Parameters != nil {
 			cat1 = intent.Parameters["category1"]
@@ -54,7 +57,7 @@ func ExecuteAggregation(ctx context.Context, intent ExpenseIntent, dbClient Data
 		}
 		return service.CompareCategories(ctx, cat1, cat2, period)
 
-	case PERIOD_COMPARISON:
+	case ai.PERIOD_COMPARISON:
 		var period1, period2 string
 		if intent.Parameters != nil {
 			period1 = intent.Parameters["period1"]
@@ -65,13 +68,13 @@ func ExecuteAggregation(ctx context.Context, intent ExpenseIntent, dbClient Data
 		}
 		return service.ComparePeriods(ctx, period1, period2)
 
-	case TOP_MERCHANTS:
+	case ai.TOP_MERCHANTS:
 		return service.GetTopMerchants(ctx, period, 10)
 
-	case DAILY_TREND:
+	case ai.DAILY_TREND:
 		return service.GetDailyTrend(ctx, period)
 
-	case MONTHLY_TREND:
+	case ai.MONTHLY_TREND:
 		months := 12
 		if intent.Parameters != nil {
 			if monthsStr := intent.Parameters["months"]; monthsStr != "" {
@@ -80,15 +83,15 @@ func ExecuteAggregation(ctx context.Context, intent ExpenseIntent, dbClient Data
 		}
 		return service.GetMonthlyTrend(ctx, months)
 
-	case ANOMALY_EXPLANATION:
+	case ai.ANOMALY_EXPLANATION:
 		// Return anomaly data (transactions that are significantly above average)
 		return service.GetAnomalies(ctx, period)
 
-	case BUDGET_STATUS:
+	case ai.BUDGET_STATUS:
 		// For now, return spending data - budget logic would need budget definitions
 		return service.GetTotalSpend(ctx, period)
 
-	case GENERAL_INSIGHT:
+	case ai.GENERAL_INSIGHT:
 		// Return total spend as a general insight
 		return service.GetTotalSpend(ctx, period)
 
@@ -98,9 +101,9 @@ func ExecuteAggregation(ctx context.Context, intent ExpenseIntent, dbClient Data
 }
 
 // validateIntent validates that required parameters are present
-func validateIntent(intent ExpenseIntent) error {
+func validateIntent(intent ai.ExpenseIntent) error {
 	switch intent.IntentType {
-	case CATEGORY_SUMMARY:
+	case ai.CATEGORY_SUMMARY:
 		category := intent.Category
 		if category == "" && intent.Parameters != nil {
 			category = intent.Parameters["category"]
@@ -109,7 +112,7 @@ func validateIntent(intent ExpenseIntent) error {
 			return errors.New("category is required for CATEGORY_SUMMARY intent")
 		}
 
-	case CATEGORY_COMPARISON:
+	case ai.CATEGORY_COMPARISON:
 		var cat1, cat2 string
 		if intent.Parameters != nil {
 			cat1 = intent.Parameters["category1"]
@@ -122,7 +125,7 @@ func validateIntent(intent ExpenseIntent) error {
 			return errors.New("both category1 and category2 are required for CATEGORY_COMPARISON intent")
 		}
 
-	case PERIOD_COMPARISON:
+	case ai.PERIOD_COMPARISON:
 		var period1, period2 string
 		if intent.Parameters != nil {
 			period1 = intent.Parameters["period1"]

@@ -1,9 +1,11 @@
-package main
+package services
 
 import (
 	"fmt"
 	"math"
 	"sort"
+
+	"github.com/yourusername/expense-tracker/ai"
 )
 
 // AnalyticsService provides advanced analytics for expense data
@@ -33,7 +35,7 @@ func NewAnalyticsService() *AnalyticsService {
 }
 
 // GenerateInsights analyzes spending patterns and generates actionable insights
-func (a *AnalyticsService) GenerateInsights(analytics *SpendingAnalytics) []SpendingInsight {
+func (a *AnalyticsService) GenerateInsights(analytics *ai.SpendingAnalytics) []SpendingInsight {
 	var insights []SpendingInsight
 
 	// Check for high food spending
@@ -125,7 +127,7 @@ func (a *AnalyticsService) GenerateInsights(analytics *SpendingAnalytics) []Spen
 }
 
 // GenerateBudgetRecommendations creates personalized budget recommendations
-func (a *AnalyticsService) GenerateBudgetRecommendations(analytics *SpendingAnalytics) []BudgetRecommendation {
+func (a *AnalyticsService) GenerateBudgetRecommendations(analytics *ai.SpendingAnalytics) []BudgetRecommendation {
 	var recommendations []BudgetRecommendation
 
 	// Calculate average monthly spending
@@ -217,7 +219,7 @@ func (a *AnalyticsService) GenerateBudgetRecommendations(analytics *SpendingAnal
 }
 
 // CalculateSpendingScore gives an overall financial health score (0-100)
-func (a *AnalyticsService) CalculateSpendingScore(analytics *SpendingAnalytics) (int, string) {
+func (a *AnalyticsService) CalculateSpendingScore(analytics *ai.SpendingAnalytics) (int, string) {
 	score := 100.0
 	var factors []string
 
@@ -309,7 +311,7 @@ func (a *AnalyticsService) CalculateSpendingScore(analytics *SpendingAnalytics) 
 }
 
 // PredictNextMonthSpending estimates next month's spending based on trends
-func (a *AnalyticsService) PredictNextMonthSpending(analytics *SpendingAnalytics) map[string]float64 {
+func (a *AnalyticsService) PredictNextMonthSpending(analytics *ai.SpendingAnalytics) map[string]float64 {
 	predictions := make(map[string]float64)
 
 	if len(analytics.MonthlyTrends) < 2 {
