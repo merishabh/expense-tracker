@@ -9,18 +9,19 @@ import (
 
 // ExplanationService handles converting aggregation results to explanations
 type ExplanationService struct {
-	explainer *ai.GeminiExplainer
+	groqClient *ai.GroqClient
 }
 
-// NewExplanationService creates a new explanation service
+// NewExplanationService creates a new explanation service using Groq
 func NewExplanationService(apiKey string) (*ExplanationService, error) {
-	explainer, err := ai.NewGeminiExplainer(apiKey)
-	if err != nil {
-		return nil, err
+	if apiKey == "" {
+		return nil, fmt.Errorf("GROQ_API_KEY is required")
 	}
 
+	groqClient := ai.NewGroqClient(apiKey)
+
 	return &ExplanationService{
-		explainer: explainer,
+		groqClient: groqClient,
 	}, nil
 }
 
@@ -42,8 +43,8 @@ func (s *ExplanationService) ExplainAggregation(
 		return "", fmt.Errorf("failed to build prompt: %v", err)
 	}
 
-	// Generate explanation
-	explanation, err := s.explainer.GenerateExplanation(prompt)
+	// Generate explanation using Groq
+	explanation, err := s.groqClient.GenerateExplanation(prompt)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate explanation: %v", err)
 	}
@@ -181,17 +182,15 @@ func formatGeneralFacts(result interface{}) string {
 
 // Close closes the explanation service
 func (s *ExplanationService) Close() error {
-	if s.explainer != nil {
-		return s.explainer.Close()
-	}
+	// GroqClient doesn't need explicit closing (uses HTTP client)
 	return nil
 }
 
 // NewExplanationServiceFromEnv creates an explanation service using API key from environment
 func NewExplanationServiceFromEnv() (*ExplanationService, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY environment variable is required")
+		return nil, fmt.Errorf("GROQ_API_KEY environment variable is required")
 	}
 	return NewExplanationService(apiKey)
 }

@@ -32,7 +32,7 @@ func getMessageBody(payload *gmail.MessagePart) string {
 	return ""
 }
 
-func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClient, geminiClient *ai.GeminiClient) {
+func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClient, groqClient *ai.GroqClient) {
 	pageToken := ""
 	for {
 		req := srv.Users.Messages.List(user).Q("from:alerts@hdfcbank.net OR from:customercare@icicibank.com OR from:credit_cards@icicibank.com newer_than:100d").MaxResults(500)
@@ -61,15 +61,15 @@ func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClie
 
 			var tx *models.Transaction
 
-			if tx = ParseICICICreditCardTransaction(cleanBody, dbClient, geminiClient); tx != nil {
+			if tx = ParseICICICreditCardTransaction(cleanBody, dbClient, groqClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = ParseCreditCardTransaction(cleanBody, dbClient, geminiClient); tx != nil {
+			} else if tx = ParseCreditCardTransaction(cleanBody, dbClient, groqClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = ParseCardPaymentTransaction(cleanBody, dbClient, geminiClient); tx != nil {
+			} else if tx = ParseCardPaymentTransaction(cleanBody, dbClient, groqClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = ParseIMPSPaymentTransaction(cleanBody, dbClient, geminiClient); tx != nil {
+			} else if tx = ParseIMPSPaymentTransaction(cleanBody, dbClient, groqClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
-			} else if tx = ParseBankTransaction(cleanBody, dbClient, geminiClient); tx != nil {
+			} else if tx = ParseBankTransaction(cleanBody, dbClient, groqClient); tx != nil {
 				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
 			} else {
 				fmt.Println("⚠️ No known transaction format detected.")

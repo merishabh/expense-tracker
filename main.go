@@ -48,14 +48,14 @@ func main() {
 	}
 	defer dbClient.Close()
 
-	// Create Gemini client for AI-powered vendor categorization (optional)
-	var geminiClient *ai.GeminiClient
-	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
-		geminiClient = ai.NewGeminiClient(apiKey)
-		fmt.Println("Gemini AI client initialized for smart vendor categorization")
+	// Create Groq client for AI-powered vendor categorization (optional)
+	var groqClient *ai.GroqClient
+	if apiKey := os.Getenv("GROQ_API_KEY"); apiKey != "" {
+		groqClient = ai.NewGroqClient(apiKey)
+		fmt.Println("Groq AI client initialized for smart vendor categorization")
 	} else {
-		fmt.Println("GEMINI_API_KEY not found - AI vendor categorization disabled")
+		fmt.Println("GROQ_API_KEY not found - AI vendor categorization disabled")
 	}
 
-	services.ProcessEmails(srv, "me", dbClient, geminiClient)
+	services.ProcessEmails(srv, "me", dbClient, groqClient)
 }
