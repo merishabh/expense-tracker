@@ -28,6 +28,8 @@ func NewAggregationService(dbClient models.DatabaseClient) *AggregationService {
 func (s *AggregationService) GetTotalSpend(ctx context.Context, period string) (SpendResult, error) {
 	log.Printf("[GetTotalSpend] Starting aggregation for period: %s", period)
 
+	
+
 	start, end, err := utils.ResolvePeriod(period)
 	if err != nil {
 		log.Printf("[GetTotalSpend] Error resolving period %s: %v", period, err)
