@@ -19,8 +19,10 @@ type AskGeminiRequest struct {
 }
 
 type AskGeminiResponse struct {
-	Answer string `json:"answer"`
-	Error  string `json:"error,omitempty"`
+	Intent      *ai.ExpenseIntent `json:"intent,omitempty"`
+	Data        interface{}       `json:"data,omitempty"`
+	Explanation string            `json:"explanation,omitempty"`
+	Error       string            `json:"error,omitempty"`
 }
 
 type ClassifyIntentRequest struct {
@@ -55,96 +57,99 @@ func askGeminiHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Initialize database client
+	// Step 1: Initialize Groq client for intent classification
+	groqAPIKey := os.Getenv("GROQ_API_KEY")
+	if groqAPIKey == "" {
+		log.Println("GROQ_API_KEY not set")
+		resp := AskGeminiResponse{Error: "Groq API key not configured"}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	groqClient := ai.NewGroqClient(groqAPIKey)
+
+	// Step 2: Classify the user's question into an intent using Groq
+	intent, err := groqClient.ClassifyIntent(req.Question)
+	if err != nil {
+		log.Printf("Intent classification error: %v", err)
+		resp := AskGeminiResponse{Error: fmt.Sprintf("Failed to classify intent: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	log.Printf("Intent: %v", intent)
+
+	// Step 3: Initialize database client for aggregation
 	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
 		log.Printf("Failed to create database client: %v", err)
-		resp := AskGeminiResponse{Error: "Database connection failed"}
+		resp := AskGeminiResponse{
+			Intent: intent,
+			Error:  "Database connection failed",
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
 	defer dbClient.Close()
 
-	// Fetch transactions
-	transactions, err := dbClient.FetchAllTransactions()
+	// Step 4: Execute aggregation based on the classified intent
+	ctx := r.Context()
+	aggregationResult, err := services.ExecuteAggregation(ctx, *intent, dbClient)
 	if err != nil {
-		log.Printf("Failed to fetch transactions: %v", err)
-		resp := AskGeminiResponse{Error: "Failed to fetch transactions"}
+		log.Printf("Aggregation error: %v", err)
+		resp := AskGeminiResponse{
+			Intent: intent,
+			Error:  fmt.Sprintf("Failed to aggregate data: %v", err),
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
-	// Initialize Gemini client
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		log.Println("GEMINI_API_KEY not set")
-		resp := AskGeminiResponse{Error: "Gemini API key not configured"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	geminiClient := ai.NewGeminiClient(apiKey)
-	answer, err := geminiClient.AskGemini(transactions, req.Question)
+	// Step 5: Generate human-readable explanation using Groq
+	// Use the same Groq API key for explanation service
+	explanationService, err := services.NewExplanationService(groqAPIKey)
 	if err != nil {
-		log.Printf("Gemini API error: %v", err)
-		resp := AskGeminiResponse{Error: fmt.Sprintf("Failed to get answer: %v", err)}
+		log.Printf("Failed to create explanation service: %v", err)
+		resp := AskGeminiResponse{
+			Intent: intent,
+			Data:   aggregationResult,
+			Error:  fmt.Sprintf("Failed to create explanation service: %v", err),
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
+	defer explanationService.Close()
 
-	resp := AskGeminiResponse{Answer: answer}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-func classifyIntentHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req ClassifyIntentRequest
-	body, err := io.ReadAll(r.Body)
+	explanation, err := explanationService.ExplainAggregation(
+		intent.IntentType,
+		aggregationResult,
+		req.Question,
+	)
 	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	if req.Question == "" {
-		http.Error(w, "Question is required", http.StatusBadRequest)
-		return
-	}
-
-	// Initialize Gemini client (no database queries needed)
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		log.Println("GEMINI_API_KEY not set")
-		resp := ClassifyIntentResponse{Error: "Gemini API key not configured"}
+		log.Printf("Explanation generation error: %v", err)
+		// Still return data even if explanation fails
+		resp := AskGeminiResponse{
+			Intent:      intent,
+			Data:        aggregationResult,
+			Explanation: fmt.Sprintf("Generated data but failed to create explanation: %v", err),
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
+	log.Printf("Explanation: %v", explanation)
 
-	geminiClient := ai.NewGeminiClient(apiKey)
-	intent, err := geminiClient.ClassifyIntent(req.Question)
-	if err != nil {
-		log.Printf("Intent classification error: %v", err)
-		resp := ClassifyIntentResponse{Error: fmt.Sprintf("Failed to classify intent: %v", err)}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
+	// Step 6: Return complete response with intent, data, and explanation
+	resp := AskGeminiResponse{
+		Intent:      intent,
+		Data:        aggregationResult,
+		Explanation: explanation,
 	}
-
-	resp := ClassifyIntentResponse{Intent: intent}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -198,17 +203,17 @@ func analyticsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Initialize Gemini client for analytics
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	// Initialize Groq client for analytics
+	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" {
-		log.Println("GEMINI_API_KEY not set")
-		http.Error(w, "Gemini API key not configured", http.StatusInternalServerError)
+		log.Println("GROQ_API_KEY not set")
+		http.Error(w, "Groq API key not configured", http.StatusInternalServerError)
 		return
 	}
-	geminiClient := ai.NewGeminiClient(apiKey)
+	groqClient := ai.NewGroqClient(apiKey)
 
 	// Generate analytics
-	analytics := geminiClient.AnalyzeTransactions(transactions)
+	analytics := groqClient.AnalyzeTransactions(transactions)
 
 	resp := AnalyticsResponse{Analytics: analytics}
 	w.Header().Set("Content-Type", "application/json")
@@ -239,15 +244,15 @@ func insightsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" {
-		resp := InsightsResponse{Error: "Gemini API key not configured"}
+		resp := InsightsResponse{Error: "Groq API key not configured"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	geminiClient := ai.NewGeminiClient(apiKey)
-	analytics := geminiClient.AnalyzeTransactions(transactions)
+	groqClient := ai.NewGroqClient(apiKey)
+	analytics := groqClient.AnalyzeTransactions(transactions)
 
 	// Generate insights
 	analyticsService := services.NewAnalyticsService()
@@ -282,15 +287,15 @@ func recommendationsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" {
-		resp := RecommendationsResponse{Error: "Gemini API key not configured"}
+		resp := RecommendationsResponse{Error: "Groq API key not configured"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	geminiClient := ai.NewGeminiClient(apiKey)
-	analytics := geminiClient.AnalyzeTransactions(transactions)
+	groqClient := ai.NewGroqClient(apiKey)
+	analytics := groqClient.AnalyzeTransactions(transactions)
 
 	// Generate recommendations
 	analyticsService := services.NewAnalyticsService()
@@ -325,15 +330,15 @@ func scoreHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" {
-		resp := ScoreResponse{Error: "Gemini API key not configured"}
+		resp := ScoreResponse{Error: "Groq API key not configured"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	geminiClient := ai.NewGeminiClient(apiKey)
-	analytics := geminiClient.AnalyzeTransactions(transactions)
+	groqClient := ai.NewGroqClient(apiKey)
+	analytics := groqClient.AnalyzeTransactions(transactions)
 
 	// Calculate score
 	analyticsService := services.NewAnalyticsService()
@@ -368,15 +373,15 @@ func predictionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" {
-		resp := PredictionsResponse{Error: "Gemini API key not configured"}
+		resp := PredictionsResponse{Error: "Groq API key not configured"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	geminiClient := ai.NewGeminiClient(apiKey)
-	analytics := geminiClient.AnalyzeTransactions(transactions)
+	groqClient := ai.NewGroqClient(apiKey)
+	analytics := groqClient.AnalyzeTransactions(transactions)
 
 	// Generate predictions
 	analyticsService := services.NewAnalyticsService()
@@ -413,7 +418,6 @@ func serveStaticFiles(w http.ResponseWriter, r *http.Request) {
 func StartAPIServer() {
 	// API routes
 	http.HandleFunc("/ask-gemini", askGeminiHandler)
-	http.HandleFunc("/classify-intent", classifyIntentHandler)
 	http.HandleFunc("/analytics", analyticsHandler)
 	http.HandleFunc("/insights", insightsHandler)
 	http.HandleFunc("/recommendations", recommendationsHandler)
