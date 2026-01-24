@@ -77,16 +77,28 @@ Valid Intent Types (use exactly these strings):
 Valid Categories (if mentioned): Food, Shopping, Travel, Entertainment, Bills, Healthcare, Amazon, Other
 
 Valid Period Values (if mentioned, use exactly these strings):
-- "TODAY" - Today
-- "YESTERDAY" - Yesterday
-- "THIS_WEEK" - This week
-- "LAST_WEEK" - Last week
-- "THIS_MONTH" - Current month
-- "LAST_MONTH" - Previous month
+- "TODAY" - Today, today's spending, spent today, today only
+- "YESTERDAY" - Yesterday, yesterday's spending, spent yesterday
+- "THIS_WEEK" - This week, current week, week so far
+- "LAST_WEEK" - Last week, previous week
+- "THIS_MONTH" - This month, current month, month so far
+- "LAST_MONTH" - Last month, previous month
+
+IMPORTANT: Pay close attention to temporal words in the question:
+- "today", "today's", "spent today" → use "TODAY"
+- "yesterday", "yesterday's" → use "YESTERDAY"
+- "this week" → use "THIS_WEEK"
+- "this month" → use "THIS_MONTH"
+- "last month" → use "LAST_MONTH"
+- If no time period is mentioned, DO NOT include a period field
 
 Instructions:
 1. Determine the primary intent type based on the question (must be one of the valid Intent Types above)
-2. Extract any mentioned category, period (using the valid Period values), vendor, or amount
+2. CAREFULLY extract any mentioned category, period (using the valid Period values), vendor, or amount
+   - For period: Look for words like "today", "yesterday", "this week", "this month", etc.
+   - If the question says "today" or "today's", you MUST set period to "TODAY"
+   - If the question says "this month" or "month", set period to "THIS_MONTH"
+   - If no time period is mentioned, omit the period field entirely
 3. Return a valid JSON object with the following structure:
 {
   "intent_type": "<one of the valid intent types>",
@@ -109,8 +121,23 @@ Examples:
 Question: "How much did I spend on food this month?"
 Response: {"intent_type": "CATEGORY_SUMMARY", "category": "Food", "period": "THIS_MONTH", "confidence": 0.95}
 
+Question: "How much did I spend today?"
+Response: {"intent_type": "TOTAL_SPEND", "period": "TODAY", "confidence": 0.95}
+
+Question: "What did I spend today?"
+Response: {"intent_type": "TOTAL_SPEND", "period": "TODAY", "confidence": 0.95}
+
 Question: "Show me my total spending"
 Response: {"intent_type": "TOTAL_SPEND", "confidence": 0.9}
+
+Question: "How much did I spend yesterday?"
+Response: {"intent_type": "TOTAL_SPEND", "period": "YESTERDAY", "confidence": 0.95}
+
+Question: "How much did I spend in kims?"
+Response: {"intent_type": "CATEGORY_SUMMARY", "vendor": "kims", "confidence": 0.9}
+
+Question: "What did I spend at zomato this month?"
+Response: {"intent_type": "CATEGORY_SUMMARY", "vendor": "zomato", "period": "THIS_MONTH", "confidence": 0.95}
 
 Question: "Compare my spending last month to this month"
 Response: {"intent_type": "PERIOD_COMPARISON", "parameters": {"period1": "LAST_MONTH", "period2": "THIS_MONTH"}, "confidence": 0.9}

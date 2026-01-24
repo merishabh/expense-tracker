@@ -431,7 +431,6 @@ func StartAPIServer() {
 	log.Println("🌐 Frontend available at: http://localhost:8080")
 	log.Println("📊 Available API endpoints:")
 	log.Println("  POST /ask-gemini          - Ask AI questions about your spending")
-	log.Println("  POST /classify-intent     - Classify user question into validated intent JSON")
 	log.Println("  GET  /analytics           - Get comprehensive spending analytics")
 	log.Println("  GET  /insights            - Get spending insights and warnings")
 	log.Println("  GET  /recommendations     - Get budget recommendations")
@@ -440,7 +439,6 @@ func StartAPIServer() {
 	log.Println()
 	log.Println("💡 Example usage:")
 	log.Println("  curl -X POST http://localhost:8080/ask-gemini -H 'Content-Type: application/json' -d '{\"question\": \"How much did I spend on food?\"}'")
-	log.Println("  curl -X POST http://localhost:8080/classify-intent -H 'Content-Type: application/json' -d '{\"question\": \"How much did I spend on food this month?\"}'")
 	log.Println("  curl -X GET http://localhost:8080/insights")
 	log.Println("  curl -X GET http://localhost:8080/score")
 

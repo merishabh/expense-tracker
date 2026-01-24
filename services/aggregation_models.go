@@ -28,3 +28,12 @@ type TopMerchantsResult struct {
 	Period    string             `json:"period"`
 	Merchants map[string]float64 `json:"merchants"`
 }
+
+// VendorSpendResult represents spending for a specific vendor
+type VendorSpendResult struct {
+	Vendor     string  `json:"vendor"`
+	Period     string  `json:"period"`
+	TotalSpent float64 `json:"total_spent"`
+	Count      int     `json:"count"`
+	Average    float64 `json:"average"`
+}

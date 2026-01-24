@@ -29,6 +29,12 @@ func ExecuteAggregation(ctx context.Context, intent ai.ExpenseIntent, dbClient m
 		return service.GetTotalSpend(ctx, period)
 
 	case ai.CATEGORY_SUMMARY:
+		// Check if vendor is provided instead of category
+		if intent.Vendor != "" {
+			// User is asking about a specific vendor, not a category
+			return service.GetVendorSpend(ctx, intent.Vendor, period)
+		}
+
 		category := intent.Category
 		if category == "" {
 			// Try to get from parameters
@@ -37,7 +43,7 @@ func ExecuteAggregation(ctx context.Context, intent ai.ExpenseIntent, dbClient m
 			}
 		}
 		if category == "" {
-			return nil, errors.New("category is required for CATEGORY_SUMMARY intent")
+			return nil, errors.New("category or vendor is required for CATEGORY_SUMMARY intent")
 		}
 		return service.GetCategorySpend(ctx, category, period)
 
@@ -104,12 +110,18 @@ func ExecuteAggregation(ctx context.Context, intent ai.ExpenseIntent, dbClient m
 func validateIntent(intent ai.ExpenseIntent) error {
 	switch intent.IntentType {
 	case ai.CATEGORY_SUMMARY:
+		// Check if vendor is provided instead of category
+		if intent.Vendor != "" {
+			// Vendor is provided, that's valid
+			return nil
+		}
+
 		category := intent.Category
 		if category == "" && intent.Parameters != nil {
 			category = intent.Parameters["category"]
 		}
 		if category == "" {
-			return errors.New("category is required for CATEGORY_SUMMARY intent")
+			return errors.New("category or vendor is required for CATEGORY_SUMMARY intent")
 		}
 
 	case ai.CATEGORY_COMPARISON:
