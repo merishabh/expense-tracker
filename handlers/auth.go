@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"golang.org/x/oauth2"
 )
@@ -25,20 +26,36 @@ func GetClient() *http.Client {
 		tok = StartAuthServer()
 	}
 
-	// Create client that will automatically refresh the token
-	client := Config.Client(context.Background(), tok)
-
-	// Check if we need to save the refreshed token
+	// Try to refresh the token if it exists
 	if tok.RefreshToken != "" {
 		// Create a token source that will automatically handle refresh
 		tokenSource := Config.TokenSource(context.Background(), tok)
 		newTok, err := tokenSource.Token()
-		if err == nil && newTok.AccessToken != tok.AccessToken {
-			// Token was refreshed, save it
-			saveToken(tokFile, newTok)
+		if err != nil {
+			// Token refresh failed - token is expired or revoked
+			log.Printf("Token refresh failed: %v", err)
+			log.Printf("Token expired or revoked. Starting new OAuth flow...")
+			// Delete the old token file
+			os.Remove(tokFile)
+			// Start new OAuth flow
+			tok = StartAuthServer()
+		} else {
+			// Token was successfully refreshed
+			if newTok.AccessToken != tok.AccessToken {
+				// Token was refreshed, save it
+				saveToken(tokFile, newTok)
+				tok = newTok
+			}
 		}
+	} else {
+		// No refresh token available, need to re-authenticate
+		log.Printf("No refresh token available. Starting OAuth flow...")
+		os.Remove(tokFile)
+		tok = StartAuthServer()
 	}
 
+	// Create client that will automatically refresh the token
+	client := Config.Client(context.Background(), tok)
 	return client
 }
 
@@ -57,23 +74,37 @@ func StartAuthServer() *oauth2.Token {
 	codeCh := make(chan string)
 	srv := &http.Server{Addr: ":8080"}
 
-	http.HandleFunc("/oauth2callback", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth2callback", func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
+		if code == "" {
+			http.Error(w, "Authorization code not found", http.StatusBadRequest)
+			return
+		}
 		fmt.Fprintln(w, "Authorization successful! You can close this window.")
 		codeCh <- code
 	})
+	srv.Handler = mux
 
 	go func() {
-		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-			log.Fatalf("ListenAndServe(): %v", err)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("OAuth callback server error: %v", err)
 		}
 	}()
 
 	authURL := Config.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", "consent"))
-	fmt.Printf("Open this URL in your browser:\n%v\n", authURL)
+	fmt.Printf("\n=== OAuth Authentication Required ===\n")
+	fmt.Printf("Open this URL in your browser:\n%v\n\n", authURL)
+	fmt.Printf("Waiting for authorization...\n")
 
 	code := <-codeCh
-	srv.Shutdown(context.Background())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("Error shutting down OAuth server: %v", err)
+	}
 
 	token, err := Config.Exchange(context.Background(), code)
 	if err != nil {
@@ -81,6 +112,7 @@ func StartAuthServer() *oauth2.Token {
 	}
 
 	saveToken("credentials/token.json", token)
+	fmt.Printf("✓ Token saved successfully!\n\n")
 	return token
 }
 

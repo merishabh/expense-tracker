@@ -3,169 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>💰 Expense Tracker Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <title>💰 Expense Tracker</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <h1><i class="fas fa-chart-line"></i> Expense Tracker Dashboard</h1>
-                <div class="header-stats">
-                    <div class="stat-card">
-                        <div class="stat-icon"><i class="fas fa-wallet"></i></div>
-                        <div class="stat-info">
-                            <span class="stat-label">Total Spending</span>
-                            <span class="stat-value" id="totalSpending">₹0</span>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon"><i class="fas fa-star"></i></div>
-                        <div class="stat-info">
-                            <span class="stat-label">Health Score</span>
-                            <span class="stat-value" id="healthScore">0/100</span>
-                        </div>
-                    </div>
+        <div class="chat-container">
+            <div class="chat-header">
+                <h1><i class="fas fa-robot"></i> Expense Tracker Assistant</h1>
+            </div>
+            <div class="chat-history" id="chatHistory">
+                <div class="welcome-message">
+                    <i class="fas fa-robot"></i>
+                    <p>Hi! I'm your AI financial assistant. How can I help you today?</p>
                 </div>
             </div>
-        </header>
-
-        <!-- Loading Spinner -->
-        <div id="loadingSpinner" class="loading-spinner">
-            <div class="spinner"></div>
-            <p>Loading your financial data...</p>
+            <div class="chat-input-container">
+                <input type="text" id="questionInput" placeholder="Ask about your expenses..." />
+                <button id="askBtn" class="ask-btn" type="button">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
         </div>
-
-        <!-- Main Content -->
-        <main class="main-content" id="mainContent" style="display: none;">
-            
-            <!-- AI Assistant Section -->
-            <section class="section">
-                <div class="section-header">
-                    <h2><i class="fas fa-robot"></i> Ask Your AI Financial Assistant</h2>
-                    <p>Get personalized insights about your spending habits</p>
-                </div>
-                <div class="ai-chat-container">
-                    <div class="chat-history" id="chatHistory">
-                        <div class="welcome-message">
-                            <i class="fas fa-robot"></i>
-                            <p>Hi! I'm your AI financial assistant. Ask me anything about your spending patterns, budget recommendations, or financial insights!</p>
-                        </div>
-                    </div>
-                    <div class="chat-input-container">
-                        <input type="text" id="questionInput" placeholder="Ask about your expenses... (e.g., 'How much did I spend on food?')" />
-                        <button id="askBtn" class="ask-btn">
-                            <i class="fas fa-paper-plane"></i>
-                        </button>
-                    </div>
-                    <div class="quick-questions">
-                        <span class="quick-label">Quick questions:</span>
-                        <button class="quick-btn" data-question="How much did I spend on food this month?">Food Spending</button>
-                        <button class="quick-btn" data-question="What are my spending trends?">Trends</button>
-                        <button class="quick-btn" data-question="How can I reduce my expenses?">Save Money</button>
-                        <button class="quick-btn" data-question="What's my biggest expense category?">Top Category</button>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Analytics Overview -->
-            <section class="section">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-pie"></i> Spending Analytics</h2>
-                </div>
-                <div class="analytics-grid">
-                    <div class="chart-container">
-                        <h3><i class="fas fa-chart-pie"></i> Spending by Category</h3>
-                        <div id="categoryChart"></div>
-                    </div>
-                    <div class="chart-container">
-                        <h3><i class="fas fa-chart-line"></i> Monthly Spending Trends</h3>
-                        <div id="monthlyChart"></div>
-                    </div>
-                    <div class="chart-container">
-                        <h3><i class="fas fa-store"></i> Top Vendors</h3>
-                        <div id="vendorChart"></div>
-                    </div>
-                    <div class="chart-container">
-                        <h3><i class="fas fa-crystal-ball"></i> Next Month Predictions</h3>
-                        <div id="predictionChart"></div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Additional Analytics Charts -->
-            <section class="section">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-bar"></i> Advanced Analytics</h2>
-                </div>
-                <div class="analytics-grid">
-                    <div class="chart-container">
-                        <h3><i class="fas fa-calendar-check"></i> Spending Pattern Heatmap</h3>
-                        <div id="heatmapChart"></div>
-                    </div>
-                    <div class="chart-container">
-                        <h3><i class="fas fa-balance-scale"></i> Budget vs Actual</h3>
-                        <div id="budgetComparisonChart"></div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Insights Section -->
-            <section class="section">
-                <div class="section-header">
-                    <h2><i class="fas fa-lightbulb"></i> Smart Insights</h2>
-                </div>
-                <div class="insights-container" id="insightsContainer">
-                    <!-- Insights will be populated here -->
-                </div>
-            </section>
-
-            <!-- Budget Recommendations -->
-            <section class="section">
-                <div class="section-header">
-                    <h2><i class="fas fa-bullseye"></i> Budget Recommendations</h2>
-                </div>
-                <div class="recommendations-container" id="recommendationsContainer">
-                    <!-- Recommendations will be populated here -->
-                </div>
-            </section>
-
-            <!-- Financial Health Score -->
-            <section class="section">
-                <div class="section-header">
-                    <h2><i class="fas fa-heartbeat"></i> Financial Health</h2>
-                </div>
-                <div class="health-score-container">
-                    <div class="score-section">
-                        <div class="score-circle" id="scoreCircle">
-                            <div class="score-value" id="scoreValue">0</div>
-                            <div class="score-label">out of 100</div>
-                        </div>
-                        <div id="scoreGaugeChart"></div>
-                    </div>
-                    <div class="score-explanation">
-                        <h3>Your Financial Health Analysis</h3>
-                        <p id="scoreExplanation">Loading your financial health analysis...</p>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Recent Transactions -->
-            <section class="section">
-                <div class="section-header">
-                    <h2><i class="fas fa-history"></i> Recent Transactions</h2>
-                </div>
-                <div class="transactions-container" id="transactionsContainer">
-                    <!-- Transactions will be populated here -->
-                </div>
-            </section>
-
-        </main>
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=2"></script>
 </body>
 </html> 

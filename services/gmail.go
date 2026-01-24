@@ -94,7 +94,6 @@ func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClie
 				fmt.Println("Transaction saved to database.")
 			}
 		}
-
 		if res.NextPageToken == "" {
 			break
 		}

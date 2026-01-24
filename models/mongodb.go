@@ -27,20 +27,27 @@ func NewMongoClient() (*MongoClient, error) {
 
 	// Get MongoDB connection string from environment
 	mongoURI := os.Getenv("MONGODB_URI")
-	fmt.Println("MongoDB URI:", mongoURI)
-	if mongoURI == "" {
-		mongoURI = "mongodb://localhost:27017" // Default for local development
-	}
 
-	// Connect to MongoDB
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to MongoDB: %v", err)
-	}
+	var client *mongo.Client
+	var err error
 
-	// Ping the database to verify connection
-	if err := client.Ping(ctx, nil); err != nil {
-		return nil, fmt.Errorf("failed to ping MongoDB: %v", err)
+	if mongoURI != "" {
+		// Use provided MONGODB_URI (may include auth or not)
+		fmt.Printf("🔌 Connecting to MongoDB using MONGODB_URI: %s\n", maskPassword(mongoURI))
+		client, err = mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to MongoDB: %v", err)
+		}
+	} else {
+		// No MONGODB_URI set - try with Docker Compose credentials first
+		fmt.Printf("🔌 Connecting to MongoDB (trying with auth)...\n")
+		authURI := "mongodb://admin:password@localhost:27017/expense_tracker?authSource=admin"
+		fmt.Printf("🔌 Using connection string: mongodb://admin:***@localhost:27017/expense_tracker?authSource=admin\n")
+		client, err = mongo.Connect(ctx, options.Client().ApplyURI(authURI))
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to MongoDB: %v", err)
+		}
+		mongoURI = authURI
 	}
 
 	// Get database name from environment or use default
@@ -49,14 +56,65 @@ func NewMongoClient() (*MongoClient, error) {
 		dbName = "expense_tracker"
 	}
 
+	// Create database object with authentication options
 	database := client.Database(dbName)
 
-	fmt.Printf("🍃 Connected to MongoDB at %s, database: %s\n", mongoURI, dbName)
+	// Try to authenticate by running a simple command
+	// This ensures authentication is working before we return
+	authCmd := bson.D{{Key: "ping", Value: 1}}
+	var result bson.M
+	if err := database.RunCommand(ctx, authCmd).Decode(&result); err != nil {
+		// If authentication fails, try without auth as fallback
+		if strings.Contains(err.Error(), "authentication") || strings.Contains(err.Error(), "auth") || strings.Contains(err.Error(), "Unauthorized") {
+			if mongoURI == "" || strings.Contains(mongoURI, "@") {
+				// We tried with auth, now try without
+				fmt.Printf("⚠️  Authentication failed. Trying connection without authentication...\n")
+				client.Disconnect(ctx)
+				simpleURI := "mongodb://localhost:27017"
+				client, err = mongo.Connect(ctx, options.Client().ApplyURI(simpleURI))
+				if err != nil {
+					return nil, fmt.Errorf("failed to connect to MongoDB: %v", err)
+				}
+				database = client.Database(dbName)
+				// Test the connection
+				if err := database.RunCommand(ctx, authCmd).Decode(&result); err != nil {
+					return nil, fmt.Errorf("failed to authenticate MongoDB (tried with and without auth): %v", err)
+				}
+				fmt.Printf("✓ Connected to MongoDB without authentication\n")
+			} else {
+				return nil, fmt.Errorf("failed to authenticate MongoDB: %v", err)
+			}
+		} else {
+			return nil, fmt.Errorf("failed to authenticate MongoDB: %v", err)
+		}
+	} else {
+		fmt.Printf("✓ Connected and authenticated to MongoDB successfully\n")
+	}
+
+	fmt.Printf("🍃 Using database: %s\n", dbName)
 	return &MongoClient{
 		Client:   client,
 		Database: database,
 		Ctx:      ctx,
 	}, nil
+}
+
+// maskPassword masks password in connection string for logging
+func maskPassword(uri string) string {
+	if strings.Contains(uri, "@") {
+		parts := strings.Split(uri, "@")
+		if len(parts) == 2 {
+			authPart := parts[0]
+			if strings.Contains(authPart, ":") {
+				authParts := strings.Split(authPart, ":")
+				if len(authParts) >= 3 {
+					// mongodb://user:pass@host
+					return fmt.Sprintf("%s:***@%s", strings.Join(authParts[:len(authParts)-1], ":"), parts[1])
+				}
+			}
+		}
+	}
+	return uri
 }
 
 // SaveTransaction stores a Transaction document in MongoDB

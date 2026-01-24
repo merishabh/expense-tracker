@@ -68,9 +68,24 @@ func convertToPayload(intent ai.IntentType, result interface{}, userQuestion str
 		}, nil
 
 	case ai.CATEGORY_SUMMARY:
+		// Check if result is VendorSpendResult (vendor query) or CategorySpendResult (category query)
+		if vendorResult, ok := result.(VendorSpendResult); ok {
+			// Vendor-specific query
+			return ai.CategoryInsightPayload{
+				Category:       vendorResult.Vendor, // Use vendor name as category for explanation
+				Period:         vendorResult.Period,
+				TotalSpent:     vendorResult.TotalSpent,
+				AverageSpent:   vendorResult.Average,
+				Budget:         0, // Budget not available in aggregation result
+				BudgetExceeded: false,
+				DeltaPercent:   0, // Delta not calculated in aggregation
+				UserQuestion:   userQuestion,
+			}, nil
+		}
+
 		categoryResult, ok := result.(CategorySpendResult)
 		if !ok {
-			return nil, fmt.Errorf("invalid result type for CATEGORY_SUMMARY: expected CategorySpendResult")
+			return nil, fmt.Errorf("invalid result type for CATEGORY_SUMMARY: expected CategorySpendResult or VendorSpendResult")
 		}
 		return ai.CategoryInsightPayload{
 			Category:       categoryResult.Category,

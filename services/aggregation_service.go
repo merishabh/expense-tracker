@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/yourusername/expense-tracker/models"
@@ -27,8 +28,6 @@ func NewAggregationService(dbClient models.DatabaseClient) *AggregationService {
 // GetTotalSpend calculates total spending for a given period
 func (s *AggregationService) GetTotalSpend(ctx context.Context, period string) (SpendResult, error) {
 	log.Printf("[GetTotalSpend] Starting aggregation for period: %s", period)
-
-	
 
 	start, end, err := utils.ResolvePeriod(period)
 	if err != nil {
@@ -105,6 +104,63 @@ func (s *AggregationService) GetCategorySpend(ctx context.Context, category, per
 		Category:   category,
 		Period:     period,
 		TotalSpent: totalSpent,
+		Average:    average,
+	}, nil
+}
+
+// GetVendorSpend calculates spending for a specific vendor in a period
+func (s *AggregationService) GetVendorSpend(ctx context.Context, vendor, period string) (VendorSpendResult, error) {
+	log.Printf("[GetVendorSpend] Starting aggregation for vendor: %s, period: %s", vendor, period)
+
+	if vendor == "" {
+		log.Printf("[GetVendorSpend] Error: vendor is required")
+		return VendorSpendResult{}, fmt.Errorf("vendor is required")
+	}
+
+	start, end, err := utils.ResolvePeriod(period)
+	if err != nil {
+		log.Printf("[GetVendorSpend] Error resolving period %s: %v", period, err)
+		return VendorSpendResult{}, err
+	}
+	log.Printf("[GetVendorSpend] Resolved period range: %s to %s", start.Format(time.RFC3339), end.Format(time.RFC3339))
+
+	transactions, err := s.fetchTransactionsInRange(ctx, start, end)
+	if err != nil {
+		log.Printf("[GetVendorSpend] Error fetching transactions: %v", err)
+		return VendorSpendResult{}, err
+	}
+	log.Printf("[GetVendorSpend] Fetched %d total transactions in range", len(transactions))
+
+	var totalSpent float64
+	var count int
+	vendorLower := strings.ToLower(vendor)
+
+	for _, tx := range transactions {
+		txVendorLower := strings.ToLower(tx.Vendor)
+		// Match vendor name (case-insensitive, partial match)
+		if txVendorLower == vendorLower || strings.Contains(txVendorLower, vendorLower) || strings.Contains(vendorLower, txVendorLower) {
+			totalSpent += tx.Amount
+			count++
+		}
+	}
+
+	log.Printf("[GetVendorSpend] Found %d transactions for vendor '%s'", count, vendor)
+
+	var average float64
+	if count > 0 {
+		average = totalSpent / float64(count)
+		log.Printf("[GetVendorSpend] Calculated average: ₹%.2f per transaction", average)
+	} else {
+		log.Printf("[GetVendorSpend] No transactions found for vendor '%s'", vendor)
+	}
+
+	log.Printf("[GetVendorSpend] Total spent at vendor '%s': ₹%.2f", vendor, totalSpent)
+
+	return VendorSpendResult{
+		Vendor:     vendor,
+		Period:     period,
+		TotalSpent: totalSpent,
+		Count:      count,
 		Average:    average,
 	}, nil
 }
