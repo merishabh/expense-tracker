@@ -1,0 +1,8 @@
+./aggregation_dispatcher.go
+./aggregation_models.go
+./aggregation_service.go
+./analytics.go
+./explanation_service.go
+./gmail.go
+./parser.go
+./reporting.go

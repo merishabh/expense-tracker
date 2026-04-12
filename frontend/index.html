@@ -3,31 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>💰 Expense Tracker</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <title>Expense Tracker MVP</title>
     <link href="style.css" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <div class="chat-container">
-            <div class="chat-header">
-                <h1><i class="fas fa-robot"></i> Expense Tracker Assistant</h1>
+    <main class="page">
+        <section class="hero">
+            <div>
+                <p class="eyebrow">Phase 1 MVP</p>
+                <h1>Expense Tracker</h1>
+                <p class="subtitle">HDFC-first ingestion with plain summaries. AI is intentionally out of the runtime path.</p>
             </div>
-            <div class="chat-history" id="chatHistory">
-                <div class="welcome-message">
-                    <i class="fas fa-robot"></i>
-                    <p>Hi! I'm your AI financial assistant. How can I help you today?</p>
-                </div>
-            </div>
-            <div class="chat-input-container">
-                <input type="text" id="questionInput" placeholder="Ask about your expenses..." />
-                <button id="askBtn" class="ask-btn" type="button">
-                    <i class="fas fa-paper-plane"></i>
-                </button>
-            </div>
-        </div>
-    </div>
+            <label class="period-picker">
+                <span>Period</span>
+                <select id="periodSelect">
+                    <option value="THIS_MONTH">This Month</option>
+                    <option value="LAST_MONTH">Last Month</option>
+                    <option value="THIS_WEEK">This Week</option>
+                    <option value="LAST_WEEK">Last Week</option>
+                    <option value="TODAY">Today</option>
+                    <option value="YESTERDAY">Yesterday</option>
+                </select>
+            </label>
+        </section>
 
-    <script src="script.js?v=2"></script>
+        <section class="summary-grid">
+            <article class="card metric">
+                <p>Total Spend</p>
+                <h2 id="totalAmount">-</h2>
+            </article>
+            <article class="card metric">
+                <p>Transactions</p>
+                <h2 id="transactionCount">-</h2>
+            </article>
+            <article class="card metric">
+                <p>Average Ticket</p>
+                <h2 id="averageAmount">-</h2>
+            </article>
+            <article class="card metric">
+                <p>Need Review</p>
+                <h2 id="uncategorizedCount">-</h2>
+            </article>
+        </section>
+
+        <section class="content-grid">
+            <article class="card">
+                <div class="section-head">
+                    <h3>Category Breakdown</h3>
+                </div>
+                <div id="categoryList" class="stack-list"></div>
+            </article>
+
+            <article class="card">
+                <div class="section-head">
+                    <h3>Source Breakdown</h3>
+                </div>
+                <div id="sourceList" class="stack-list"></div>
+            </article>
+        </section>
+
+        <section class="content-grid single">
+            <article class="card">
+                <div class="section-head">
+                    <h3>Daily Trend</h3>
+                </div>
+                <div id="trendList" class="stack-list"></div>
+            </article>
+        </section>
+
+        <section class="content-grid single">
+            <article class="card">
+                <div class="section-head">
+                    <h3>Recent Transactions</h3>
+                </div>
+                <div id="transactionTable" class="table-wrap"></div>
+            </article>
+        </section>
+    </main>
+
+    <script src="script.js?v=3"></script>
 </body>
-</html> 
+</html>
