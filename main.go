@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/yourusername/expense-tracker/ai"
 	"github.com/yourusername/expense-tracker/handlers"
 	"github.com/yourusername/expense-tracker/models"
 	"github.com/yourusername/expense-tracker/services"
@@ -41,21 +40,11 @@ func main() {
 
 	fmt.Println("Fetching and processing emails...")
 
-	// Create database client (will choose MongoDB or Firestore based on environment)
 	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
 		log.Fatalf("Failed to create database client: %v", err)
 	}
 	defer dbClient.Close()
 
-	// Create Groq client for AI-powered vendor categorization (optional)
-	var groqClient *ai.GroqClient
-	if apiKey := os.Getenv("GROQ_API_KEY"); apiKey != "" {
-		groqClient = ai.NewGroqClient(apiKey)
-		fmt.Println("Groq AI client initialized for smart vendor categorization")
-	} else {
-		fmt.Println("GROQ_API_KEY not found - AI vendor categorization disabled")
-	}
-
-	services.ProcessEmails(srv, "me", dbClient, groqClient)
+	services.ProcessEmails(srv, "me", dbClient)
 }
