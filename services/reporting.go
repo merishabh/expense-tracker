@@ -49,10 +49,25 @@ func NewReportingService(dbClient models.DatabaseClient) *ReportingService {
 	return &ReportingService{dbClient: dbClient}
 }
 
-func (s *ReportingService) ListTransactions(period string, limit int) ([]models.Transaction, error) {
+func (s *ReportingService) ListTransactions(period string, category string, limit int) ([]models.Transaction, error) {
 	txs, err := s.filteredTransactions(period)
 	if err != nil {
 		return nil, err
+	}
+
+	category = strings.TrimSpace(category)
+	if category != "" {
+		filteredByCategory := make([]models.Transaction, 0, len(txs))
+		for _, tx := range txs {
+			txCategory := strings.TrimSpace(tx.Category)
+			if txCategory == "" {
+				txCategory = "Other"
+			}
+			if strings.EqualFold(txCategory, category) {
+				filteredByCategory = append(filteredByCategory, tx)
+			}
+		}
+		txs = filteredByCategory
 	}
 
 	sort.Slice(txs, func(i, j int) bool {
