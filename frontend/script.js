@@ -44,15 +44,22 @@ function renderTrend(items) {
         return;
     }
 
-    container.innerHTML = items.map(item => `
-        <div class="stack-row">
-            <div>
-                <strong>${item.date}</strong>
-                <span>${item.count} txns</span>
+    const maxAmount = Math.max(...items.map(item => item.amount), 1);
+    container.innerHTML = items.map(item => {
+        const width = `${Math.max((item.amount / maxAmount) * 100, 8)}%`;
+        return `
+            <div class="trend-row">
+                <div class="trend-meta">
+                    <strong>${item.date}</strong>
+                    <span>${item.count} txns</span>
+                </div>
+                <div class="trend-bar-wrap">
+                    <div class="trend-bar" style="width:${width}"></div>
+                </div>
+                <strong class="trend-value">${formatCurrency(item.amount)}</strong>
             </div>
-            <strong>${formatCurrency(item.amount)}</strong>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function renderTransactions(transactions) {
@@ -90,16 +97,84 @@ function renderTransactions(transactions) {
     `;
 }
 
+function renderMonthlyComparison(comparison) {
+    const container = document.getElementById('monthComparison');
+    if (!container) return;
+
+    const isUp = (comparison.delta_amount || 0) >= 0;
+    const deltaPrefix = isUp ? '+' : '';
+
+    container.innerHTML = `
+        <div class="comparison-grid">
+            <div class="comparison-card">
+                <span>Current Month</span>
+                <strong>${formatCurrency(comparison.current_month_amount)}</strong>
+                <small>${comparison.current_month_count || 0} txns</small>
+            </div>
+            <div class="comparison-card">
+                <span>Last Month</span>
+                <strong>${formatCurrency(comparison.last_month_amount)}</strong>
+                <small>${comparison.last_month_count || 0} txns</small>
+            </div>
+        </div>
+        <div class="delta-banner ${isUp ? 'up' : 'down'}">
+            <strong>${deltaPrefix}${formatCurrency(comparison.delta_amount)}</strong>
+            <span>${deltaPrefix}${(comparison.delta_percent || 0).toFixed(1)}% vs last month</span>
+        </div>
+    `;
+}
+
+function renderHighlights(summary, comparison, categories, transactions) {
+    const container = document.getElementById('analyticsHighlights');
+    if (!container) return;
+
+    const topCategory = (categories.items || [])[0];
+    const latestTransaction = (transactions.transactions || [])[0];
+
+    const highlights = [
+        {
+            title: 'Largest Category',
+            body: topCategory
+                ? `${topCategory.label} at ${formatCurrency(topCategory.amount)}`
+                : 'No category data available'
+        },
+        {
+            title: 'Top Merchant This Month',
+            body: comparison.top_merchant_this_month
+                ? `${comparison.top_merchant_this_month} at ${formatCurrency(comparison.top_merchant_spend)}`
+                : 'No merchant concentration yet'
+        },
+        {
+            title: 'Latest Transaction',
+            body: latestTransaction
+                ? `${latestTransaction.vendor || 'Unknown'} for ${formatCurrency(latestTransaction.amount)}`
+                : 'No recent transactions'
+        },
+        {
+            title: 'Review Queue',
+            body: `${summary.uncategorized_count || 0} transactions still need categorization review`
+        }
+    ];
+
+    container.innerHTML = highlights.map(item => `
+        <div class="highlight-card">
+            <span>${item.title}</span>
+            <strong>${item.body}</strong>
+        </div>
+    `).join('');
+}
+
 async function loadDashboard() {
     const period = document.getElementById('periodSelect')?.value || 'THIS_MONTH';
 
     try {
-        const [summary, categories, sources, trend, transactions] = await Promise.all([
+        const [summary, categories, trend, transactions, monthlyComparison, lastTenDays] = await Promise.all([
             fetchJSON(`/api/summary/total?period=${period}`),
             fetchJSON(`/api/summary/category?period=${period}`),
-            fetchJSON(`/api/summary/source?period=${period}`),
-            fetchJSON(`/api/summary/trend?period=${period}`),
-            fetchJSON(`/api/transactions?period=${period}&limit=25`)
+            fetchJSON('/api/summary/trend/last-10-days'),
+            fetchJSON(`/api/transactions?period=${period}&limit=25`),
+            fetchJSON('/api/summary/monthly-comparison'),
+            fetchJSON('/api/transactions/last-10-days')
         ]);
 
         document.getElementById('totalAmount').textContent = formatCurrency(summary.total_amount);
@@ -108,9 +183,10 @@ async function loadDashboard() {
         document.getElementById('uncategorizedCount').textContent = String(summary.uncategorized_count || 0);
 
         renderBreakdown('categoryList', categories.items || [], 'No categories found.');
-        renderBreakdown('sourceList', sources.items || [], 'No sources found.');
+        renderMonthlyComparison(monthlyComparison);
         renderTrend(trend.items || []);
-        renderTransactions(transactions.transactions || []);
+        renderTransactions(lastTenDays.transactions || []);
+        renderHighlights(summary, monthlyComparison, categories, transactions);
     } catch (error) {
         console.error(error);
         document.body.innerHTML = `<main class="page"><section class="card"><h2>Dashboard failed to load</h2><p>${error.message}</p></section></main>`;
