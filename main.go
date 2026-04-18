@@ -5,13 +5,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/yourusername/expense-tracker/ai"
 	"github.com/yourusername/expense-tracker/handlers"
 	"github.com/yourusername/expense-tracker/models"
 	"github.com/yourusername/expense-tracker/services"
-
-	"golang.org/x/oauth2/google"
-	"google.golang.org/api/gmail/v1"
 )
 
 func main() {
@@ -21,41 +17,23 @@ func main() {
 		return
 	}
 
-	// Original email processing functionality
-	b, err := os.ReadFile("credentials/client_secret.json")
+	srv, err := handlers.InitGmailService()
 	if err != nil {
-		log.Fatalf("Unable to read client_secret.json: %v", err)
-	}
-
-	handlers.Config, err = google.ConfigFromJSON(b, gmail.GmailReadonlyScope)
-	if err != nil {
-		log.Fatalf("Unable to parse client secret: %v", err)
-	}
-
-	client := handlers.GetClient()
-
-	srv, err := gmail.New(client)
-	if err != nil {
-		log.Fatalf("Unable to create Gmail client: %v", err)
+		log.Fatalf("Unable to initialize Gmail service: %v", err)
 	}
 
 	fmt.Println("Fetching and processing emails...")
 
-	// Create database client (will choose MongoDB or Firestore based on environment)
 	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
 		log.Fatalf("Failed to create database client: %v", err)
 	}
 	defer dbClient.Close()
 
-	// Create Groq client for AI-powered vendor categorization (optional)
-	var groqClient *ai.GroqClient
-	if apiKey := os.Getenv("GROQ_API_KEY"); apiKey != "" {
-		groqClient = ai.NewGroqClient(apiKey)
-		fmt.Println("Groq AI client initialized for smart vendor categorization")
-	} else {
-		fmt.Println("GROQ_API_KEY not found - AI vendor categorization disabled")
+	stats, err := services.ProcessEmails(srv, "me", dbClient)
+	if err != nil {
+		log.Fatalf("Email sync failed: %v", err)
 	}
 
-	services.ProcessEmails(srv, "me", dbClient, groqClient)
+	log.Printf("Email sync completed: %+v", stats)
 }

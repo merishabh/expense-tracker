@@ -1,166 +1,202 @@
-// Chat functionality
-function addChatMessage(message, isUser = false) {
-    const chatHistory = document.getElementById('chatHistory');
-    if (!chatHistory) {
-        console.error('chatHistory element not found');
-        return;
-    }
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `chat-message ${isUser ? 'user-message' : 'ai-message'}`;
-    messageDiv.textContent = message;
-    chatHistory.appendChild(messageDiv);
-    chatHistory.scrollTop = chatHistory.scrollHeight;
+function formatCurrency(value) {
+    return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        maximumFractionDigits: 2
+    }).format(value || 0);
 }
 
-async function askGemini(question) {
-    console.log('Making API call to /ask-gemini with question:', question);
+async function fetchJSON(path) {
+    const response = await fetch(path);
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Request failed: ${response.status}`);
+    }
+    return response.json();
+}
+
+function renderBreakdown(containerId, items, emptyMessage) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (!items.length) {
+        container.innerHTML = `<p class="empty">${emptyMessage}</p>`;
+        return;
+    }
+
+    container.innerHTML = items.map(item => `
+        <div class="stack-row">
+            <div>
+                <strong>${item.label}</strong>
+                <span>${item.count} txns</span>
+            </div>
+            <strong>${formatCurrency(item.amount)}</strong>
+        </div>
+    `).join('');
+}
+
+function renderTrend(items) {
+    const container = document.getElementById('trendList');
+    if (!container) return;
+
+    if (!items.length) {
+        container.innerHTML = '<p class="empty">No trend data for this period.</p>';
+        return;
+    }
+
+    const maxAmount = Math.max(...items.map(item => item.amount), 1);
+    container.innerHTML = items.map(item => {
+        const width = `${Math.max((item.amount / maxAmount) * 100, 8)}%`;
+        return `
+            <div class="trend-row">
+                <div class="trend-meta">
+                    <strong>${item.date}</strong>
+                    <span>${item.count} txns</span>
+                </div>
+                <div class="trend-bar-wrap">
+                    <div class="trend-bar" style="width:${width}"></div>
+                </div>
+                <strong class="trend-value">${formatCurrency(item.amount)}</strong>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderTransactions(transactions) {
+    const container = document.getElementById('transactionTable');
+    if (!container) return;
+
+    if (!transactions.length) {
+        container.innerHTML = '<p class="empty">No transactions found.</p>';
+        return;
+    }
+
+    const rows = transactions.map(tx => `
+        <tr>
+            <td>${tx.date_time ? new Date(tx.date_time).toLocaleString() : '-'}</td>
+            <td>${tx.vendor || '-'}</td>
+            <td>${tx.category || 'Other'}</td>
+            <td>${tx.type || '-'}</td>
+            <td>${formatCurrency(tx.amount)}</td>
+        </tr>
+    `).join('');
+
+    container.innerHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Merchant</th>
+                    <th>Category</th>
+                    <th>Source</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
+function renderMonthlyComparison(comparison) {
+    const container = document.getElementById('monthComparison');
+    if (!container) return;
+
+    const isUp = (comparison.delta_amount || 0) >= 0;
+    const deltaPrefix = isUp ? '+' : '';
+
+    container.innerHTML = `
+        <div class="comparison-grid">
+            <div class="comparison-card">
+                <span>Current Month</span>
+                <strong>${formatCurrency(comparison.current_month_amount)}</strong>
+                <small>${comparison.current_month_count || 0} txns</small>
+            </div>
+            <div class="comparison-card">
+                <span>Last Month</span>
+                <strong>${formatCurrency(comparison.last_month_amount)}</strong>
+                <small>${comparison.last_month_count || 0} txns</small>
+            </div>
+        </div>
+        <div class="delta-banner ${isUp ? 'up' : 'down'}">
+            <strong>${deltaPrefix}${formatCurrency(comparison.delta_amount)}</strong>
+            <span>${deltaPrefix}${(comparison.delta_percent || 0).toFixed(1)}% vs last month</span>
+        </div>
+    `;
+}
+
+function renderHighlights(summary, comparison, categories, transactions) {
+    const container = document.getElementById('analyticsHighlights');
+    if (!container) return;
+
+    const topCategory = (categories.items || [])[0];
+    const latestTransaction = (transactions.transactions || [])[0];
+
+    const highlights = [
+        {
+            title: 'Largest Category',
+            body: topCategory
+                ? `${topCategory.label} at ${formatCurrency(topCategory.amount)}`
+                : 'No category data available'
+        },
+        {
+            title: 'Top Merchant This Month',
+            body: comparison.top_merchant_this_month
+                ? `${comparison.top_merchant_this_month} at ${formatCurrency(comparison.top_merchant_spend)}`
+                : 'No merchant concentration yet'
+        },
+        {
+            title: 'Latest Transaction',
+            body: latestTransaction
+                ? `${latestTransaction.vendor || 'Unknown'} for ${formatCurrency(latestTransaction.amount)}`
+                : 'No recent transactions'
+        },
+        {
+            title: 'Review Queue',
+            body: `${summary.uncategorized_count || 0} transactions still need categorization review`
+        }
+    ];
+
+    container.innerHTML = highlights.map(item => `
+        <div class="highlight-card">
+            <span>${item.title}</span>
+            <strong>${item.body}</strong>
+        </div>
+    `).join('');
+}
+
+async function loadDashboard() {
+    const period = document.getElementById('periodSelect')?.value || 'THIS_MONTH';
+
     try {
-        const response = await fetch('/ask-gemini', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ question })
-        });
-        
-        console.log('Response status:', response.status);
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Response error:', errorText);
-            throw new Error(`Server error: ${response.status} - ${errorText}`);
-        }
-        
-        const data = await response.json();
-        console.log('Response data:', data);
-        
-        if (data.error) {
-            throw new Error(data.error);
-        }
-        
-        // Handle different response formats
-        if (data.explanation) {
-            return data.explanation;
-        } else if (data.answer) {
-            return data.answer;
-        } else if (data.data) {
-            // If we have structured data, format it nicely
-            return JSON.stringify(data.data, null, 2);
-        } else {
-            return 'I received your question but got an unexpected response format.';
-        }
+        const [summary, categories, trend, transactions, monthlyComparison, lastTenDays] = await Promise.all([
+            fetchJSON(`/api/summary/total?period=${period}`),
+            fetchJSON(`/api/summary/category?period=${period}`),
+            fetchJSON('/api/summary/trend/last-10-days'),
+            fetchJSON(`/api/transactions?period=${period}&limit=25`),
+            fetchJSON('/api/summary/monthly-comparison'),
+            fetchJSON('/api/transactions/last-10-days')
+        ]);
+
+        document.getElementById('totalAmount').textContent = formatCurrency(summary.total_amount);
+        document.getElementById('transactionCount').textContent = String(summary.transaction_count || 0);
+        document.getElementById('averageAmount').textContent = formatCurrency(summary.average_amount);
+        document.getElementById('uncategorizedCount').textContent = String(summary.uncategorized_count || 0);
+
+        renderBreakdown('categoryList', categories.items || [], 'No categories found.');
+        renderMonthlyComparison(monthlyComparison);
+        renderTrend(trend.items || []);
+        renderTransactions(lastTenDays.transactions || []);
+        renderHighlights(summary, monthlyComparison, categories, transactions);
     } catch (error) {
-        console.error('Error asking Gemini:', error);
-        throw error;
+        console.error(error);
+        document.body.innerHTML = `<main class="page"><section class="card"><h2>Dashboard failed to load</h2><p>${error.message}</p></section></main>`;
     }
 }
 
-async function handleQuestion(question) {
-    console.log('handleQuestion called with:', question);
-    const askBtn = document.getElementById('askBtn');
-    const questionInput = document.getElementById('questionInput');
-    
-    if (!askBtn || !questionInput) {
-        console.error('Missing elements:', { askBtn: !!askBtn, questionInput: !!questionInput });
-        return;
+document.addEventListener('DOMContentLoaded', () => {
+    const periodSelect = document.getElementById('periodSelect');
+    if (periodSelect) {
+        periodSelect.addEventListener('change', loadDashboard);
     }
-    
-    // Disable input during processing
-    askBtn.disabled = true;
-    askBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-    questionInput.disabled = true;
-    
-    // Add user message
-    addChatMessage(question, true);
-    
-    try {
-        const answer = await askGemini(question);
-        addChatMessage(answer, false);
-    } catch (error) {
-        addChatMessage('Sorry, I encountered an error: ' + error.message, false);
-        console.error('Error in chat:', error);
-    } finally {
-        // Re-enable input
-        askBtn.disabled = false;
-        askBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
-        questionInput.disabled = false;
-        questionInput.value = '';
-        questionInput.focus();
-    }
-}
-
-// Function to handle send button click (exposed globally immediately)
-function handleSendClick() {
-    console.log('=== handleSendClick called ===');
-    const questionInput = document.getElementById('questionInput');
-    if (!questionInput) {
-        console.error('questionInput not found');
-        alert('Input field not found!');
-        return;
-    }
-    const question = questionInput.value.trim();
-    console.log('Question value:', question);
-    if (question) {
-        handleQuestion(question).catch(err => {
-            console.error('Error in handleQuestion:', err);
-        });
-    } else {
-        console.log('No question entered');
-        alert('Please enter a question');
-    }
-}
-
-// Make it globally available immediately
-window.handleSendClick = handleSendClick;
-
-// Event listeners - set up when DOM is ready
-(function() {
-    function init() {
-        console.log('Initializing chat interface...');
-        const askBtn = document.getElementById('askBtn');
-        const questionInput = document.getElementById('questionInput');
-        
-        if (!askBtn) {
-            console.error('Could not find askBtn element');
-            return;
-        }
-        if (!questionInput) {
-            console.error('Could not find questionInput element');
-            return;
-        }
-        
-        console.log('Elements found, attaching event listeners...');
-        
-        // Remove any existing onclick to avoid conflicts
-        askBtn.removeAttribute('onclick');
-        
-        // Add click event listener
-        askBtn.addEventListener('click', function(e) {
-            console.log('Button clicked via addEventListener');
-            e.preventDefault();
-            e.stopPropagation();
-            handleSendClick();
-        });
-        
-        // Add Enter key handler
-        questionInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                console.log('Enter key pressed');
-                e.preventDefault();
-                handleSendClick();
-            }
-        });
-        
-        // Focus on input
-        questionInput.focus();
-        console.log('Chat interface initialized successfully');
-    }
-    
-    // Run when DOM is ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        // DOM is already ready
-        init();
-    }
-})();
+    loadDashboard();
+});

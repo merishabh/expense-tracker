@@ -26,6 +26,8 @@ WORKDIR /root/
 
 # Copy the binary from builder stage
 COPY --from=builder /app/expense-tracker .
+COPY --from=builder /app/frontend ./frontend
+
 
 # Create directories for credentials
 RUN mkdir -p /root/credentials
@@ -33,5 +35,5 @@ RUN mkdir -p /root/credentials
 # Expose port (if needed for web interface later)
 EXPOSE 8080
 
-# Run the application
-CMD ["./expense-tracker"] 
+# Run the API server
+CMD ["./expense-tracker", "api"]
