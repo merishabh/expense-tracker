@@ -5,14 +5,14 @@ import (
 )
 
 type Transaction struct {
-	Type            string // "CreditCard" or "BankTransfer"
-	CardEnding      string
-	DebitedAccount  string
-	CreditedAccount string
-	Amount          float64
-	Vendor          string
-	DateTime        time.Time
-	Category        string // New field for transaction category
+	Type            string    `bson:"type" json:"type"`                         // "CreditCard" or "BankTransfer"
+	CardEnding      string    `bson:"cardending" json:"card_ending"`
+	DebitedAccount  string    `bson:"debitedaccount" json:"debited_account"`
+	CreditedAccount string    `bson:"creditedaccount" json:"credited_account"`
+	Amount          float64   `bson:"amount" json:"amount"`
+	Vendor          string    `bson:"vendor" json:"vendor"`
+	DateTime        time.Time `bson:"datetime" json:"date_time"`
+	Category        string    `bson:"category" json:"category"` // New field for transaction category
 }
 
 // CategoryMapping represents a vendor-to-category mapping stored in MongoDB
@@ -26,21 +26,21 @@ type CategoryMapping struct {
 // VendorCategoryMapping maps vendor names to categories
 var VendorCategoryMapping = map[string]string{
 	// Food & Dining
-	"zomato":          "Food",
-	"swiggy":          "Food",
-	"dominos":         "Food",
-	"mcdonalds":       "Food",
-	"kfc":             "Food",
-	"subway":          "Food",
-	"pizza hut":       "Food",
-	"burger king":     "Food",
-	"dunkin":          "Food",
-	"starbucks":       "Food",
-	"cafe coffee day": "Food",
-	"barbeque nation": "Food",
-	"haldirams":       "Food",
-	"blinkit":         "General_food",
-	"zepto":           "General_food",
+	"zomato":          "Ordered_Food",
+	"swiggy":          "Ordered_Food",
+	"dominos":         "Ordered_Food",
+	"mcdonalds":       "Ordered_Food",
+	"kfc":             "Ordered_Food",
+	"subway":          "Ordered_Food",
+	"pizza hut":       "Ordered_Food",
+	"burger king":     "Ordered_Food",
+	"dunkin":          "Ordered_Food",
+	"starbucks":       "Ordered_Food",
+	"cafe coffee day": "Ordered_Food",
+	"barbeque nation": "Ordered_Food",
+	"haldirams":       "Ordered_Food",
+	"blinkit":         "Grocery",
+	"zepto":           "Grocery",
 	"dineout":         "Food",
 	"licious":         "Food",
 

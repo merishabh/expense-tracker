@@ -49,6 +49,10 @@ secrets.json
 *.test
 *.out
 go.work
+.gocache/
+
+# Cloud SDK local config for upload filtering
+.gcloudignore
 
 # IDE and editor files
 .vscode/

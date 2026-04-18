@@ -29,7 +29,7 @@
 
         <section class="summary-grid">
             <article class="card metric">
-                <p>Total Spend</p>
+                <p>Total Expense</p>
                 <h2 id="totalAmount">-</h2>
             </article>
             <article class="card metric">
@@ -49,34 +49,41 @@
         <section class="content-grid">
             <article class="card">
                 <div class="section-head">
-                    <h3>Category Breakdown</h3>
+                    <h3>Category Wise Spend</h3>
                 </div>
                 <div id="categoryList" class="stack-list"></div>
             </article>
 
             <article class="card">
                 <div class="section-head">
-                    <h3>Source Breakdown</h3>
+                    <h3>Month Comparison</h3>
                 </div>
-                <div id="sourceList" class="stack-list"></div>
+                <div id="monthComparison" class="comparison-panel"></div>
             </article>
         </section>
 
         <section class="content-grid single">
             <article class="card">
                 <div class="section-head">
-                    <h3>Daily Trend</h3>
+                    <h3>Last 10 Days Spend Trend</h3>
                 </div>
-                <div id="trendList" class="stack-list"></div>
+                <div id="trendList" class="trend-chart"></div>
             </article>
         </section>
 
-        <section class="content-grid single">
+        <section class="content-grid">
             <article class="card">
                 <div class="section-head">
-                    <h3>Recent Transactions</h3>
+                    <h3>Last 10 Days Transactions</h3>
                 </div>
                 <div id="transactionTable" class="table-wrap"></div>
+            </article>
+
+            <article class="card">
+                <div class="section-head">
+                    <h3>Useful Signals</h3>
+                </div>
+                <div id="analyticsHighlights" class="stack-list"></div>
             </article>
         </section>
     </main>
