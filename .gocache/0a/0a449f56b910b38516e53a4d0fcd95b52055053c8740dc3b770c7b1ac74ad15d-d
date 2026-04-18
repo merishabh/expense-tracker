@@ -1,6 +1,0 @@
-./gemini.go
-./gemini_explainer.go
-./groq.go
-./insight_payload.go
-./prompt_builder.go
-./prompt_templates.go
