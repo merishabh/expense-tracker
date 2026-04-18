@@ -3,13 +3,17 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/gmail/v1"
 )
 
 var (
@@ -17,46 +21,74 @@ var (
 	state  = "randomstatestring"
 )
 
-func GetClient() *http.Client {
-	tokFile := "credentials/token.json"
+func GetClient() (*http.Client, error) {
+	tokFile := gmailTokenPath()
 	tok, err := tokenFromFile(tokFile)
 	if err != nil {
-		// If token is not found, start OAuth flow interactively
-		log.Printf("No valid token found, starting OAuth flow...")
-		tok = StartAuthServer()
+		if shouldUseInteractiveAuth() {
+			log.Printf("No valid token found, starting OAuth flow...")
+			tok = StartAuthServer()
+		} else {
+			return nil, fmt.Errorf("gmail token not available at %s: %w", tokFile, err)
+		}
 	}
 
-	// Try to refresh the token if it exists
 	if tok.RefreshToken != "" {
-		// Create a token source that will automatically handle refresh
 		tokenSource := Config.TokenSource(context.Background(), tok)
 		newTok, err := tokenSource.Token()
 		if err != nil {
-			// Token refresh failed - token is expired or revoked
 			log.Printf("Token refresh failed: %v", err)
-			log.Printf("Token expired or revoked. Starting new OAuth flow...")
-			// Delete the old token file
-			os.Remove(tokFile)
-			// Start new OAuth flow
-			tok = StartAuthServer()
+			if shouldUseInteractiveAuth() {
+				log.Printf("Token expired or revoked. Starting new OAuth flow...")
+				os.Remove(tokFile)
+				tok = StartAuthServer()
+			} else {
+				return nil, fmt.Errorf("failed to refresh gmail token: %w", err)
+			}
 		} else {
-			// Token was successfully refreshed
 			if newTok.AccessToken != tok.AccessToken {
-				// Token was refreshed, save it
 				saveToken(tokFile, newTok)
 				tok = newTok
 			}
 		}
 	} else {
-		// No refresh token available, need to re-authenticate
-		log.Printf("No refresh token available. Starting OAuth flow...")
-		os.Remove(tokFile)
-		tok = StartAuthServer()
+		if shouldUseInteractiveAuth() {
+			log.Printf("No refresh token available. Starting OAuth flow...")
+			os.Remove(tokFile)
+			tok = StartAuthServer()
+		} else {
+			return nil, errors.New("gmail token has no refresh token; interactive auth required")
+		}
 	}
 
-	// Create client that will automatically refresh the token
 	client := Config.Client(context.Background(), tok)
-	return client
+	return client, nil
+}
+
+func InitGmailService() (*gmail.Service, error) {
+	clientSecretPath := gmailClientSecretPath()
+
+	b, err := os.ReadFile(clientSecretPath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read gmail client secret %s: %w", clientSecretPath, err)
+	}
+
+	Config, err = google.ConfigFromJSON(b, gmail.GmailReadonlyScope)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse gmail client secret: %w", err)
+	}
+
+	client, err := GetClient()
+	if err != nil {
+		return nil, err
+	}
+
+	srv, err := gmail.New(client)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create gmail client: %w", err)
+	}
+
+	return srv, nil
 }
 
 func tokenFromFile(file string) (*oauth2.Token, error) {
@@ -124,4 +156,28 @@ func saveToken(path string, token *oauth2.Token) {
 	}
 	defer f.Close()
 	json.NewEncoder(f).Encode(token)
+}
+
+func gmailClientSecretPath() string {
+	if path := os.Getenv("GMAIL_CLIENT_SECRET_PATH"); path != "" {
+		return path
+	}
+	return "credentials/client_secret.json"
+}
+
+func gmailTokenPath() string {
+	if path := os.Getenv("GMAIL_TOKEN_PATH"); path != "" {
+		return path
+	}
+	return "credentials/token.json"
+}
+
+func shouldUseInteractiveAuth() bool {
+	if strings.EqualFold(os.Getenv("DISABLE_INTERACTIVE_AUTH"), "true") {
+		return false
+	}
+	if env := strings.ToLower(os.Getenv("ENVIRONMENT")); env == "production" || env == "prod" {
+		return false
+	}
+	return true
 }

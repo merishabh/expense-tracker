@@ -3,446 +3,250 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 
-	"github.com/yourusername/expense-tracker/ai"
 	"github.com/yourusername/expense-tracker/models"
 	"github.com/yourusername/expense-tracker/services"
 )
 
-type AskGeminiRequest struct {
-	Question string `json:"question"`
+func transactionsHandler(w http.ResponseWriter, r *http.Request) {
+	reporting, cleanup, ok := newReportingService(w)
+	if !ok {
+		return
+	}
+	defer cleanup()
+
+	limit := 50
+	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	transactions, err := reporting.ListTransactions(r.URL.Query().Get("period"), limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"transactions": transactions})
 }
 
-type AskGeminiResponse struct {
-	Intent      *ai.ExpenseIntent `json:"intent,omitempty"`
-	Data        interface{}       `json:"data,omitempty"`
-	Explanation string            `json:"explanation,omitempty"`
-	Error       string            `json:"error,omitempty"`
+func lastTenDaysTransactionsHandler(w http.ResponseWriter, r *http.Request) {
+	reporting, cleanup, ok := newReportingService(w)
+	if !ok {
+		return
+	}
+	defer cleanup()
+
+	transactions, err := reporting.GetLastNDaysTransactions(10, 200)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	for i := range transactions {
+		fmt.Println(transactions[i])
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"transactions": transactions})
 }
 
-type ClassifyIntentRequest struct {
-	Question string `json:"question"`
+func totalSummaryHandler(w http.ResponseWriter, r *http.Request) {
+	reporting, cleanup, ok := newReportingService(w)
+	if !ok {
+		return
+	}
+	defer cleanup()
+
+	summary, err := reporting.GetTotalSummary(r.URL.Query().Get("period"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, summary)
 }
 
-type ClassifyIntentResponse struct {
-	Intent *ai.ExpenseIntent `json:"intent"`
-	Error  string            `json:"error,omitempty"`
+func categorySummaryHandler(w http.ResponseWriter, r *http.Request) {
+	reporting, cleanup, ok := newReportingService(w)
+	if !ok {
+		return
+	}
+	defer cleanup()
+
+	items, err := reporting.GetCategoryBreakdown(r.URL.Query().Get("period"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items})
 }
 
-func askGeminiHandler(w http.ResponseWriter, r *http.Request) {
+func sourceSummaryHandler(w http.ResponseWriter, r *http.Request) {
+	reporting, cleanup, ok := newReportingService(w)
+	if !ok {
+		return
+	}
+	defer cleanup()
+
+	items, err := reporting.GetSourceBreakdown(r.URL.Query().Get("period"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items})
+}
+
+func trendSummaryHandler(w http.ResponseWriter, r *http.Request) {
+	reporting, cleanup, ok := newReportingService(w)
+	if !ok {
+		return
+	}
+	defer cleanup()
+
+	points, err := reporting.GetDailyTrend(r.URL.Query().Get("period"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"items": points})
+}
+
+func lastTenDaysTrendHandler(w http.ResponseWriter, r *http.Request) {
+	reporting, cleanup, ok := newReportingService(w)
+	if !ok {
+		return
+	}
+	defer cleanup()
+
+	points, err := reporting.GetLastNDaysTrend(10)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"items": points})
+}
+
+func monthlyComparisonHandler(w http.ResponseWriter, r *http.Request) {
+	reporting, cleanup, ok := newReportingService(w)
+	if !ok {
+		return
+	}
+	defer cleanup()
+
+	comparison, err := reporting.GetMonthlyComparison()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, comparison)
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "ok",
+		"mode":   "phase1-mvp",
+	})
+}
+
+func syncHDFCHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	fmt.Sprint("Initializing sync hdfc API")
 
-	var req AskGeminiRequest
-	body, err := io.ReadAll(r.Body)
+	srv, err := InitGmailService()
 	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("Failed to initialize Gmail service: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	if req.Question == "" {
-		http.Error(w, "Question is required", http.StatusBadRequest)
-		return
-	}
-
-	// Step 1: Initialize Groq client for intent classification
-	groqAPIKey := os.Getenv("GROQ_API_KEY")
-	if groqAPIKey == "" {
-		log.Println("GROQ_API_KEY not set")
-		resp := AskGeminiResponse{Error: "Groq API key not configured"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	groqClient := ai.NewGroqClient(groqAPIKey)
-
-	// Step 2: Classify the user's question into an intent using Groq
-	intent, err := groqClient.ClassifyIntent(req.Question)
-	if err != nil {
-		log.Printf("Intent classification error: %v", err)
-		resp := AskGeminiResponse{Error: fmt.Sprintf("Failed to classify intent: %v", err)}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	log.Printf("Intent: %v", intent)
-
-	// Step 3: Initialize database client for aggregation
 	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
-		log.Printf("Failed to create database client: %v", err)
-		resp := AskGeminiResponse{
-			Intent: intent,
-			Error:  "Database connection failed",
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	defer dbClient.Close()
-
-	// Step 4: Execute aggregation based on the classified intent
-	ctx := r.Context()
-	aggregationResult, err := services.ExecuteAggregation(ctx, *intent, dbClient)
-	if err != nil {
-		log.Printf("Aggregation error: %v", err)
-		resp := AskGeminiResponse{
-			Intent: intent,
-			Error:  fmt.Sprintf("Failed to aggregate data: %v", err),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Step 5: Generate human-readable explanation using Groq
-	// Use the same Groq API key for explanation service
-	explanationService, err := services.NewExplanationService(groqAPIKey)
-	if err != nil {
-		log.Printf("Failed to create explanation service: %v", err)
-		resp := AskGeminiResponse{
-			Intent: intent,
-			Data:   aggregationResult,
-			Error:  fmt.Sprintf("Failed to create explanation service: %v", err),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	defer explanationService.Close()
-
-	explanation, err := explanationService.ExplainAggregation(
-		intent.IntentType,
-		aggregationResult,
-		req.Question,
-	)
-	if err != nil {
-		log.Printf("Explanation generation error: %v", err)
-		// Still return data even if explanation fails
-		resp := AskGeminiResponse{
-			Intent:      intent,
-			Data:        aggregationResult,
-			Explanation: fmt.Sprintf("Generated data but failed to create explanation: %v", err),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	log.Printf("Explanation: %v", explanation)
-
-	// Step 6: Return complete response with intent, data, and explanation
-	resp := AskGeminiResponse{
-		Intent:      intent,
-		Data:        aggregationResult,
-		Explanation: explanation,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-type AnalyticsResponse struct {
-	Analytics *ai.SpendingAnalytics `json:"analytics"`
-	Error     string                `json:"error,omitempty"`
-}
-
-type InsightsResponse struct {
-	Insights []services.SpendingInsight `json:"insights"`
-	Error    string                     `json:"error,omitempty"`
-}
-
-type RecommendationsResponse struct {
-	Recommendations []services.BudgetRecommendation `json:"recommendations"`
-	Error           string                          `json:"error,omitempty"`
-}
-
-type ScoreResponse struct {
-	Score       int    `json:"score"`
-	Explanation string `json:"explanation"`
-	Error       string `json:"error,omitempty"`
-}
-
-type PredictionsResponse struct {
-	Predictions map[string]float64 `json:"predictions"`
-	Error       string             `json:"error,omitempty"`
-}
-
-func analyticsHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Only GET method allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Initialize database client
-	dbClient, err := models.NewDatabaseClient()
-	if err != nil {
-		log.Printf("Failed to create database client: %v", err)
 		http.Error(w, "Database connection failed", http.StatusInternalServerError)
 		return
 	}
 	defer dbClient.Close()
 
-	// Fetch all transactions
-	transactions, err := dbClient.FetchAllTransactions()
+	stats, err := services.ProcessEmails(srv, "me", dbClient)
 	if err != nil {
-		log.Printf("Failed to fetch transactions: %v", err)
-		http.Error(w, "Failed to fetch transactions", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Gmail sync failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Initialize Groq client for analytics
-	apiKey := os.Getenv("GROQ_API_KEY")
-	if apiKey == "" {
-		log.Println("GROQ_API_KEY not set")
-		http.Error(w, "Groq API key not configured", http.StatusInternalServerError)
-		return
-	}
-	groqClient := ai.NewGroqClient(apiKey)
-
-	// Generate analytics
-	analytics := groqClient.AnalyzeTransactions(transactions)
-
-	resp := AnalyticsResponse{Analytics: analytics}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-func insightsHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Only GET method allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Get transactions and generate analytics
-	dbClient, err := models.NewDatabaseClient()
-	if err != nil {
-		resp := InsightsResponse{Error: "Database connection failed"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	defer dbClient.Close()
-
-	transactions, err := dbClient.FetchAllTransactions()
-	if err != nil {
-		resp := InsightsResponse{Error: "Failed to fetch transactions"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	apiKey := os.Getenv("GROQ_API_KEY")
-	if apiKey == "" {
-		resp := InsightsResponse{Error: "Groq API key not configured"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	groqClient := ai.NewGroqClient(apiKey)
-	analytics := groqClient.AnalyzeTransactions(transactions)
-
-	// Generate insights
-	analyticsService := services.NewAnalyticsService()
-	insights := analyticsService.GenerateInsights(analytics)
-
-	resp := InsightsResponse{Insights: insights}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-func recommendationsHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Only GET method allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Get transactions and generate analytics
-	dbClient, err := models.NewDatabaseClient()
-	if err != nil {
-		resp := RecommendationsResponse{Error: "Database connection failed"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	defer dbClient.Close()
-
-	transactions, err := dbClient.FetchAllTransactions()
-	if err != nil {
-		resp := RecommendationsResponse{Error: "Failed to fetch transactions"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	apiKey := os.Getenv("GROQ_API_KEY")
-	if apiKey == "" {
-		resp := RecommendationsResponse{Error: "Groq API key not configured"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	groqClient := ai.NewGroqClient(apiKey)
-	analytics := groqClient.AnalyzeTransactions(transactions)
-
-	// Generate recommendations
-	analyticsService := services.NewAnalyticsService()
-	recommendations := analyticsService.GenerateBudgetRecommendations(analytics)
-
-	resp := RecommendationsResponse{Recommendations: recommendations}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-func scoreHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Only GET method allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Get transactions and generate analytics
-	dbClient, err := models.NewDatabaseClient()
-	if err != nil {
-		resp := ScoreResponse{Error: "Database connection failed"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	defer dbClient.Close()
-
-	transactions, err := dbClient.FetchAllTransactions()
-	if err != nil {
-		resp := ScoreResponse{Error: "Failed to fetch transactions"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	apiKey := os.Getenv("GROQ_API_KEY")
-	if apiKey == "" {
-		resp := ScoreResponse{Error: "Groq API key not configured"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	groqClient := ai.NewGroqClient(apiKey)
-	analytics := groqClient.AnalyzeTransactions(transactions)
-
-	// Calculate score
-	analyticsService := services.NewAnalyticsService()
-	score, explanation := analyticsService.CalculateSpendingScore(analytics)
-
-	resp := ScoreResponse{Score: score, Explanation: explanation}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-func predictionsHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Only GET method allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Get transactions and generate analytics
-	dbClient, err := models.NewDatabaseClient()
-	if err != nil {
-		resp := PredictionsResponse{Error: "Database connection failed"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	defer dbClient.Close()
-
-	transactions, err := dbClient.FetchAllTransactions()
-	if err != nil {
-		resp := PredictionsResponse{Error: "Failed to fetch transactions"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	apiKey := os.Getenv("GROQ_API_KEY")
-	if apiKey == "" {
-		resp := PredictionsResponse{Error: "Groq API key not configured"}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	groqClient := ai.NewGroqClient(apiKey)
-	analytics := groqClient.AnalyzeTransactions(transactions)
-
-	// Generate predictions
-	analyticsService := services.NewAnalyticsService()
-	predictions := analyticsService.PredictNextMonthSpending(analytics)
-
-	resp := PredictionsResponse{Predictions: predictions}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "ok",
+		"job":    "hdfc_email_sync",
+		"stats":  stats,
+	})
 }
 
 // serveStaticFiles handles serving the frontend files
 func serveStaticFiles(w http.ResponseWriter, r *http.Request) {
-	// Serve the index.html file for root path
 	if r.URL.Path == "/" {
 		http.ServeFile(w, r, "frontend/index.html")
 		return
 	}
 
-	// Remove the leading slash and serve from static directory
 	path := r.URL.Path[1:]
 	fullPath := filepath.Join("frontend", path)
 
-	// Check if file exists
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		// If file doesn't exist, serve index.html (for SPA routing)
 		http.ServeFile(w, r, "frontend/index.html")
 		return
 	}
 
-	// Serve the requested file
 	http.ServeFile(w, r, fullPath)
 }
 
 func StartAPIServer() {
-	// API routes
-	http.HandleFunc("/ask-gemini", askGeminiHandler)
-	http.HandleFunc("/analytics", analyticsHandler)
-	http.HandleFunc("/insights", insightsHandler)
-	http.HandleFunc("/recommendations", recommendationsHandler)
-	http.HandleFunc("/score", scoreHandler)
-	http.HandleFunc("/predictions", predictionsHandler)
+	http.HandleFunc("/api/health", healthHandler)
+	http.HandleFunc("/api/jobs/sync-hdfc", syncHDFCHandler)
+	http.HandleFunc("/api/transactions", transactionsHandler)
+	http.HandleFunc("/api/transactions/last-10-days", lastTenDaysTransactionsHandler)
+	http.HandleFunc("/api/summary/total", totalSummaryHandler)
+	http.HandleFunc("/api/summary/category", categorySummaryHandler)
+	http.HandleFunc("/api/summary/source", sourceSummaryHandler)
+	http.HandleFunc("/api/summary/trend", trendSummaryHandler)
+	http.HandleFunc("/api/summary/trend/last-10-days", lastTenDaysTrendHandler)
+	http.HandleFunc("/api/summary/monthly-comparison", monthlyComparisonHandler)
 
-	// Static file serving
 	http.HandleFunc("/", serveStaticFiles)
 
 	log.Println("🚀 API Server starting on :8080")
 	log.Println("🌐 Frontend available at: http://localhost:8080")
-	log.Println("📊 Available API endpoints:")
-	log.Println("  POST /ask-gemini          - Ask AI questions about your spending")
-	log.Println("  GET  /analytics           - Get comprehensive spending analytics")
-	log.Println("  GET  /insights            - Get spending insights and warnings")
-	log.Println("  GET  /recommendations     - Get budget recommendations")
-	log.Println("  GET  /score               - Get financial health score")
-	log.Println("  GET  /predictions         - Get next month spending predictions")
-	log.Println()
-	log.Println("💡 Example usage:")
-	log.Println("  curl -X POST http://localhost:8080/ask-gemini -H 'Content-Type: application/json' -d '{\"question\": \"How much did I spend on food?\"}'")
-	log.Println("  curl -X GET http://localhost:8080/insights")
-	log.Println("  curl -X GET http://localhost:8080/score")
 
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
+}
+
+func newReportingService(w http.ResponseWriter) (*services.ReportingService, func(), bool) {
+	dbClient, err := models.NewDatabaseClient()
+	if err != nil {
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return nil, nil, false
+	}
+
+	return services.NewReportingService(dbClient), func() {
+		dbClient.Close()
+	}, true
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(payload)
 }
