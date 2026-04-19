@@ -1,3 +1,7 @@
+function formatCategory(name) {
+    return (name || '').replace(/_/g, ' ');
+}
+
 function formatCurrency(value) {
     return new Intl.NumberFormat('en-IN', {
         style: 'currency',
@@ -15,6 +19,15 @@ const dashboardState = {
 
 async function fetchJSON(path) {
     const response = await fetch(path);
+    return handleJSONResponse(response);
+}
+
+async function sendJSON(path, options) {
+    const response = await fetch(path, options);
+    return handleJSONResponse(response);
+}
+
+async function handleJSONResponse(response) {
     if (response.status === 401) {
         window.location.href = '/auth/signin';
         return;
@@ -24,6 +37,22 @@ async function fetchJSON(path) {
         throw new Error(errorText || `Request failed: ${response.status}`);
     }
     return response.json();
+}
+
+function formatDateTime(value) {
+    if (!value) return '-';
+    return new Date(value).toLocaleString();
+}
+
+function getUploadErrorMessage(error) {
+    const message = String(error?.message || '');
+    if (message.includes('404')) {
+        return 'Upload API not found. Restart the Go server so the new /api/import/google-pay route is loaded.';
+    }
+    if (message.includes('401')) {
+        return 'Your session expired. Sign in again and retry the upload.';
+    }
+    return `Import failed: ${message}`;
 }
 
 function renderBreakdown(containerId, items, emptyMessage) {
@@ -60,7 +89,7 @@ function renderCategoryBreakdown(items) {
         return `
             <button class="stack-row clickable ${isActive ? 'active' : ''}" data-category="${item.label}" type="button">
                 <div>
-                    <strong>${item.label}</strong>
+                    <strong>${formatCategory(item.label)}</strong>
                     <span>${item.count} txns</span>
                 </div>
                 <strong>${formatCurrency(item.amount)}</strong>
@@ -131,9 +160,9 @@ function renderTransactions(transactions, emptyMessage = 'No transactions found.
 
     const rows = transactions.map(tx => `
         <tr>
-            <td>${tx.date_time ? new Date(tx.date_time).toLocaleString() : '-'}</td>
+            <td>${formatDateTime(tx.date_time)}</td>
             <td>${tx.vendor || '-'}</td>
-            <td>${tx.category || 'Other'}</td>
+            <td>${formatCategory(tx.category || 'Other')}</td>
             <td>${tx.type || '-'}</td>
             <td>${formatCurrency(tx.amount)}</td>
         </tr>
@@ -193,7 +222,7 @@ function renderHighlights(summary, comparison, categories, transactions) {
         {
             title: 'Largest Category',
             body: topCategory
-                ? `${topCategory.label} at ${formatCurrency(topCategory.amount)}`
+                ? `${formatCategory(topCategory.label)} at ${formatCurrency(topCategory.amount)}`
                 : 'No category data available'
         },
         {
@@ -253,6 +282,7 @@ async function loadDashboard() {
         }
 
         renderCategoryBreakdown(dashboardState.categories);
+        populateRangeCategoryDropdown(dashboardState.categories);
         renderMonthlyComparison(monthlyComparison);
         renderTrend(trend.items || []);
         if (dashboardState.selectedCategory) {
@@ -267,6 +297,154 @@ async function loadDashboard() {
     } catch (error) {
         console.error(error);
         document.body.innerHTML = `<main class="page"><section class="card"><h2>Dashboard failed to load</h2><p>${error.message}</p></section></main>`;
+    }
+}
+
+function populateRangeCategoryDropdown(categories) {
+    const select = document.getElementById('rangeCategory');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">All Categories</option>';
+    categories.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.label;
+        opt.textContent = formatCategory(item.label);
+        select.appendChild(opt);
+    });
+    if (current) select.value = current;
+}
+
+function renderRangeResults(data) {
+    const summary = document.getElementById('rangeSummary');
+    const table = document.getElementById('rangeTable');
+    if (!summary || !table) return;
+
+    const transactions = data.transactions || [];
+    const total = transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+
+    summary.style.display = 'flex';
+    summary.innerHTML = `
+        <div class="range-stat"><span>Transactions</span><strong>${data.count || 0}</strong></div>
+        <div class="range-stat"><span>Total Spend</span><strong>${formatCurrency(total)}</strong></div>
+        <div class="range-stat"><span>Average</span><strong>${formatCurrency(transactions.length ? total / transactions.length : 0)}</strong></div>
+    `;
+
+    if (!transactions.length) {
+        table.innerHTML = '<p class="empty">No transactions found for the selected range.</p>';
+        return;
+    }
+
+    const rows = transactions.map(tx => `
+        <tr>
+            <td>${formatDateTime(tx.date_time)}</td>
+            <td>${tx.vendor || '-'}</td>
+            <td>${formatCategory(tx.category || 'Other')}</td>
+            <td>${tx.type || '-'}</td>
+            <td>${formatCurrency(tx.amount)}</td>
+        </tr>
+    `).join('');
+
+    table.innerHTML = `
+        <table>
+            <thead>
+                <tr><th>Date</th><th>Merchant</th><th>Category</th><th>Source</th><th>Amount</th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
+function renderGooglePayImportResult(summary) {
+    const result = document.getElementById('googlePayImportResult');
+    if (!result) return;
+
+    result.style.display = 'grid';
+    result.innerHTML = `
+        <div class="range-stat"><span>Imported</span><strong>${summary.imported_count || 0}</strong></div>
+        <div class="range-stat"><span>Skipped Old</span><strong>${summary.skipped_old_count || 0}</strong></div>
+        <div class="range-stat"><span>Skipped Status</span><strong>${summary.skipped_status_count || 0}</strong></div>
+        <div class="range-stat"><span>Skipped Invalid</span><strong>${summary.skipped_invalid_count || 0}</strong></div>
+        <div class="range-stat"><span>Latest Stored</span><strong>${formatDateTime(summary.latest_stored_at)}</strong></div>
+        <div class="range-stat"><span>Latest Imported</span><strong>${formatDateTime(summary.latest_imported_at)}</strong></div>
+    `;
+}
+
+async function uploadGooglePayHistory() {
+    const fileInput = document.getElementById('googlePayFile');
+    const button = document.getElementById('googlePayUpload');
+    const result = document.getElementById('googlePayImportResult');
+
+    if (!fileInput?.files?.length) {
+        alert('Please choose the Google Pay HTML file first.');
+        return;
+    }
+
+    const file = fileInput.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    button.disabled = true;
+    button.textContent = 'Uploading…';
+    if (result) {
+        result.style.display = 'block';
+        result.innerHTML = '<p class="empty">Import in progress...</p>';
+    }
+
+    try {
+        const response = await sendJSON('/api/import/google-pay', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response?.summary) {
+            renderGooglePayImportResult(response.summary);
+        }
+
+        fileInput.value = '';
+        await loadDashboard();
+    } catch (error) {
+        console.error(error);
+        if (result) {
+            result.style.display = 'block';
+            result.innerHTML = `<p class="empty">${getUploadErrorMessage(error)}</p>`;
+        }
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Upload History';
+    }
+}
+
+async function searchByRange() {
+    const from = document.getElementById('rangeFrom')?.value;
+    const to = document.getElementById('rangeTo')?.value;
+    const category = document.getElementById('rangeCategory')?.value || '';
+    const btn = document.getElementById('rangeSearch');
+
+    if (!from || !to) {
+        alert('Please select both From and To dates.');
+        return;
+    }
+    if (from > to) {
+        alert('"From" date must be before "To" date.');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+
+    try {
+        let url = `/api/transactions/range?from=${from}&to=${to}&limit=500`;
+        if (category) url += `&category=${encodeURIComponent(category)}`;
+
+        const data = await fetchJSON(url);
+        if (data) renderRangeResults(data);
+    } catch (err) {
+        console.error(err);
+        const table = document.getElementById('rangeTable');
+        if (table) table.innerHTML = `<p class="empty">Error: ${err.message}</p>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Search';
     }
 }
 
@@ -312,5 +490,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+    const rangeSearch = document.getElementById('rangeSearch');
+    if (rangeSearch) {
+        rangeSearch.addEventListener('click', searchByRange);
+    }
+
+    const googlePayUpload = document.getElementById('googlePayUpload');
+    if (googlePayUpload) {
+        googlePayUpload.addEventListener('click', uploadGooglePayHistory);
+    }
+
+    // default date range to current month
+    const today = new Date();
+    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const fmt = d => d.toISOString().slice(0, 10);
+    const fromInput = document.getElementById('rangeFrom');
+    const toInput = document.getElementById('rangeTo');
+    if (fromInput) fromInput.value = fmt(firstOfMonth);
+    if (toInput) toInput.value = fmt(today);
+
     loadDashboard();
 });

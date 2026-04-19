@@ -149,6 +149,23 @@ func (m *MongoClient) FetchAllTransactions() ([]Transaction, error) {
 	return transactions, nil
 }
 
+func (m *MongoClient) GetLatestTransactionTimeByType(txType string) (*time.Time, error) {
+	collection := m.Database.Collection("transactions")
+
+	opts := options.FindOne().SetSort(bson.D{{Key: "datetime", Value: -1}})
+
+	var txn Transaction
+	err := collection.FindOne(m.Ctx, bson.M{"type": txType}, opts).Decode(&txn)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to fetch latest transaction for type %s: %v", txType, err)
+	}
+
+	return &txn.DateTime, nil
+}
+
 // SaveUnparsedEmail stores unparsed email data in MongoDB
 func (m *MongoClient) SaveUnparsedEmail(body string, headers map[string]string) error {
 	collection := m.Database.Collection("unparsed_emails")

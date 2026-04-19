@@ -149,10 +149,10 @@ func StartAuthServer() *oauth2.Token {
 }
 
 func saveToken(path string, token *oauth2.Token) {
-	fmt.Printf("Saving token to %s\n", path)
 	f, err := os.Create(path)
 	if err != nil {
-		log.Fatalf("Unable to save token: %v", err)
+		log.Printf("Warning: unable to save token to %s: %v", path, err)
+		return
 	}
 	defer f.Close()
 	json.NewEncoder(f).Encode(token)

@@ -72,6 +72,38 @@ func (f *FirestoreClient) FetchAllTransactions() ([]Transaction, error) {
 	return txs, nil
 }
 
+func (f *FirestoreClient) GetLatestTransactionTimeByType(txType string) (*time.Time, error) {
+	iter := f.Client.Collection("transactions").Documents(f.Ctx)
+	defer iter.Stop()
+
+	var latest *time.Time
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch latest transaction for type %s: %v", txType, err)
+		}
+
+		var txn Transaction
+		if err := doc.DataTo(&txn); err != nil {
+			return nil, fmt.Errorf("failed to decode latest transaction for type %s: %v", txType, err)
+		}
+
+		if txn.Type != txType {
+			continue
+		}
+
+		if latest == nil || txn.DateTime.After(*latest) {
+			copyTime := txn.DateTime
+			latest = &copyTime
+		}
+	}
+
+	return latest, nil
+}
+
 // SaveUnparsedEmail stores unparsed email data for future analysis
 func (f *FirestoreClient) SaveUnparsedEmail(body string, headers map[string]string) error {
 	doc := map[string]interface{}{
