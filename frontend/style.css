@@ -123,6 +123,22 @@ body {
     border-bottom: 1px solid rgba(148, 163, 184, 0.2);
 }
 
+.stack-row.clickable {
+    cursor: pointer;
+    border-radius: 10px;
+    padding: 14px 10px;
+    margin: 0 -10px;
+    transition: background-color 0.2s ease;
+}
+
+.stack-row.clickable:hover {
+    background: rgba(226, 232, 240, 0.55);
+}
+
+.stack-row.clickable.active {
+    background: rgba(186, 230, 253, 0.5);
+}
+
 .stack-row div {
     display: flex;
     flex-direction: column;
