@@ -273,6 +273,46 @@ func (s *ReportingService) GetMonthlyComparison() (MonthlyComparison, error) {
 	return comparison, nil
 }
 
+func (s *ReportingService) ListTransactionsByDateRange(from, to time.Time, category string, limit int) ([]models.Transaction, error) {
+	txs, err := s.dbClient.FetchAllTransactions()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.Transaction, 0, len(txs))
+	for _, tx := range txs {
+		ts := tx.DateTime.UTC()
+		if (ts.After(from) || ts.Equal(from)) && (ts.Before(to) || ts.Equal(to)) {
+			filtered = append(filtered, tx)
+		}
+	}
+
+	category = strings.TrimSpace(category)
+	if category != "" {
+		byCat := filtered[:0]
+		for _, tx := range filtered {
+			txCategory := strings.TrimSpace(tx.Category)
+			if txCategory == "" {
+				txCategory = "Other"
+			}
+			if strings.EqualFold(txCategory, category) {
+				byCat = append(byCat, tx)
+			}
+		}
+		filtered = byCat
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].DateTime.After(filtered[j].DateTime)
+	})
+
+	if limit > 0 && len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+
+	return filtered, nil
+}
+
 func (s *ReportingService) groupBreakdown(period string, keyFn func(models.Transaction) string) ([]BreakdownItem, error) {
 	txs, err := s.filteredTransactions(period)
 	if err != nil {
