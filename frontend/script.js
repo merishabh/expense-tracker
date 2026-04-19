@@ -6,6 +6,13 @@ function formatCurrency(value) {
     }).format(value || 0);
 }
 
+const dashboardState = {
+    selectedCategory: null,
+    categories: [],
+    periodTransactions: [],
+    lastTenDaysTransactions: []
+};
+
 async function fetchJSON(path) {
     const response = await fetch(path);
     if (!response.ok) {
@@ -35,6 +42,29 @@ function renderBreakdown(containerId, items, emptyMessage) {
     `).join('');
 }
 
+function renderCategoryBreakdown(items) {
+    const container = document.getElementById('categoryList');
+    if (!container) return;
+
+    if (!items.length) {
+        container.innerHTML = '<p class="empty">No categories found.</p>';
+        return;
+    }
+
+    container.innerHTML = items.map(item => {
+        const isActive = dashboardState.selectedCategory && dashboardState.selectedCategory.toLowerCase() === String(item.label || '').toLowerCase();
+        return `
+            <button class="stack-row clickable ${isActive ? 'active' : ''}" data-category="${item.label}" type="button">
+                <div>
+                    <strong>${item.label}</strong>
+                    <span>${item.count} txns</span>
+                </div>
+                <strong>${formatCurrency(item.amount)}</strong>
+            </button>
+        `;
+    }).join('');
+}
+
 function renderTrend(items) {
     const container = document.getElementById('trendList');
     if (!container) return;
@@ -62,12 +92,36 @@ function renderTrend(items) {
     }).join('');
 }
 
-function renderTransactions(transactions) {
+function setTransactionsTitle(title) {
+    const titleEl = document.getElementById('transactionsTitle');
+    if (titleEl) {
+        titleEl.textContent = title;
+    }
+}
+
+function scrollToTransactions() {
+    const table = document.getElementById('transactionTable');
+    if (!table) return;
+    const section = table.closest('.card') || table;
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function getTxCategory(tx) {
+    const raw = String(tx?.category || '').trim();
+    return raw || 'Other';
+}
+
+function getFilteredTransactionsByCategory(category) {
+    const selected = String(category || '').trim().toLowerCase();
+    return dashboardState.periodTransactions.filter(tx => getTxCategory(tx).toLowerCase() === selected);
+}
+
+function renderTransactions(transactions, emptyMessage = 'No transactions found.') {
     const container = document.getElementById('transactionTable');
     if (!container) return;
 
     if (!transactions.length) {
-        container.innerHTML = '<p class="empty">No transactions found.</p>';
+        container.innerHTML = `<p class="empty">${emptyMessage}</p>`;
         return;
     }
 
@@ -172,7 +226,7 @@ async function loadDashboard() {
             fetchJSON(`/api/summary/total?period=${period}`),
             fetchJSON(`/api/summary/category?period=${period}`),
             fetchJSON('/api/summary/trend/last-10-days'),
-            fetchJSON(`/api/transactions?period=${period}&limit=25`),
+            fetchJSON(`/api/transactions?period=${period}&limit=500`),
             fetchJSON('/api/summary/monthly-comparison'),
             fetchJSON('/api/transactions/last-10-days')
         ]);
@@ -182,10 +236,29 @@ async function loadDashboard() {
         document.getElementById('averageAmount').textContent = formatCurrency(summary.average_amount);
         document.getElementById('uncategorizedCount').textContent = String(summary.uncategorized_count || 0);
 
-        renderBreakdown('categoryList', categories.items || [], 'No categories found.');
+        dashboardState.categories = categories.items || [];
+        dashboardState.periodTransactions = transactions.transactions || [];
+        dashboardState.lastTenDaysTransactions = lastTenDays.transactions || [];
+        if (dashboardState.selectedCategory) {
+            const categoryStillExists = dashboardState.categories.some(item =>
+                String(item.label || '').toLowerCase() === dashboardState.selectedCategory.toLowerCase()
+            );
+            if (!categoryStillExists) {
+                dashboardState.selectedCategory = null;
+            }
+        }
+
+        renderCategoryBreakdown(dashboardState.categories);
         renderMonthlyComparison(monthlyComparison);
         renderTrend(trend.items || []);
-        renderTransactions(lastTenDays.transactions || []);
+        if (dashboardState.selectedCategory) {
+            const filtered = getFilteredTransactionsByCategory(dashboardState.selectedCategory);
+            setTransactionsTitle(`Transactions: ${dashboardState.selectedCategory}`);
+            renderTransactions(filtered);
+        } else {
+            setTransactionsTitle('Last 10 Days Transactions');
+            renderTransactions(dashboardState.lastTenDaysTransactions);
+        }
         renderHighlights(summary, monthlyComparison, categories, transactions);
     } catch (error) {
         console.error(error);
@@ -196,7 +269,44 @@ async function loadDashboard() {
 document.addEventListener('DOMContentLoaded', () => {
     const periodSelect = document.getElementById('periodSelect');
     if (periodSelect) {
-        periodSelect.addEventListener('change', loadDashboard);
+        periodSelect.addEventListener('change', () => {
+            dashboardState.selectedCategory = null;
+            loadDashboard();
+        });
+    }
+
+    const categoryList = document.getElementById('categoryList');
+    if (categoryList) {
+        categoryList.addEventListener('click', async (event) => {
+            const row = event.target.closest('[data-category]');
+            if (!row) return;
+
+            const clickedCategory = row.getAttribute('data-category');
+            if (!clickedCategory) return;
+
+            try {
+                if (dashboardState.selectedCategory && dashboardState.selectedCategory.toLowerCase() === clickedCategory.toLowerCase()) {
+                    dashboardState.selectedCategory = null;
+                    setTransactionsTitle('Last 10 Days Transactions');
+                    renderTransactions(dashboardState.lastTenDaysTransactions);
+                    renderCategoryBreakdown(dashboardState.categories);
+                    scrollToTransactions();
+                    return;
+                }
+
+                dashboardState.selectedCategory = clickedCategory;
+                const filtered = getFilteredTransactionsByCategory(clickedCategory);
+                setTransactionsTitle(`Transactions: ${clickedCategory}`);
+                renderTransactions(
+                    filtered,
+                    `No transactions found for "${clickedCategory}" in the selected period.`
+                );
+                renderCategoryBreakdown(dashboardState.categories);
+                scrollToTransactions();
+            } catch (error) {
+                console.error(error);
+            }
+        });
     }
     loadDashboard();
 });

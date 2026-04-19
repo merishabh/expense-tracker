@@ -28,7 +28,11 @@ func transactionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	transactions, err := reporting.ListTransactions(r.URL.Query().Get("period"), limit)
+	transactions, err := reporting.ListTransactions(
+		r.URL.Query().Get("period"),
+		r.URL.Query().Get("category"),
+		limit,
+	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
