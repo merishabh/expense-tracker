@@ -3,31 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Expense Tracker MVP</title>
+    <title>Expense Tracker</title>
     <link href="style.css" rel="stylesheet">
 </head>
 <body>
     <main class="page">
-        <section class="hero">
-            <div>
-                <p class="eyebrow">Phase 1 MVP</p>
-                <h1>Expense Tracker</h1>
-                <p class="subtitle">HDFC-first ingestion with plain summaries. AI is intentionally out of the runtime path.</p>
+        <header class="topbar">
+            <h1>Expense Tracker</h1>
+            <div class="topbar-right">
+                <label class="period-picker">
+                    <span>Period</span>
+                    <select id="periodSelect">
+                        <option value="THIS_MONTH">This Month</option>
+                        <option value="LAST_MONTH">Last Month</option>
+                        <option value="THIS_WEEK">This Week</option>
+                        <option value="LAST_WEEK">Last Week</option>
+                        <option value="TODAY">Today</option>
+                        <option value="YESTERDAY">Yesterday</option>
+                    </select>
+                </label>
+                <a href="/auth/logout" class="signout-btn">Sign out</a>
             </div>
-            <div style="display:flex;align-items:center;gap:16px;">
-            <label class="period-picker">
-                <span>Period</span>
-                <select id="periodSelect">
-                    <option value="THIS_MONTH">This Month</option>
-                    <option value="LAST_MONTH">Last Month</option>
-                    <option value="THIS_WEEK">This Week</option>
-                    <option value="LAST_WEEK">Last Week</option>
-                    <option value="TODAY">Today</option>
-                    <option value="YESTERDAY">Yesterday</option>
-                </select>
-            </label>
-            <a href="/auth/logout" style="font-size:13px;color:#666;text-decoration:none;white-space:nowrap;">Sign out</a>
-            </div>
+        </header>
+
+        <section class="content-grid single">
+            <article class="card import-card">
+                <div class="section-head">
+                    <h3>Google Pay Import</h3>
+                </div>
+                <div class="import-panel">
+                    <label class="range-field import-field">
+                        <span>Takeout HTML</span>
+                        <input type="file" id="googlePayFile" accept=".html,text/html">
+                    </label>
+                    <button class="range-btn" id="googlePayUpload" type="button">Upload History</button>
+                </div>
+                <p class="import-note">Upload the full Google Pay takeout file. Only transactions newer than the latest imported Google Pay entry will be processed.</p>
+                <div id="googlePayImportResult" class="import-result" style="display:none"></div>
+            </article>
         </section>
 
         <section class="summary-grid">
@@ -89,8 +102,35 @@
                 <div id="analyticsHighlights" class="stack-list"></div>
             </article>
         </section>
+
+        <section class="content-grid single">
+            <article class="card">
+                <div class="section-head">
+                    <h3>Custom Date Range</h3>
+                </div>
+                <div class="range-form">
+                    <label class="range-field">
+                        <span>From</span>
+                        <input type="date" id="rangeFrom">
+                    </label>
+                    <label class="range-field">
+                        <span>To</span>
+                        <input type="date" id="rangeTo">
+                    </label>
+                    <label class="range-field">
+                        <span>Category</span>
+                        <select id="rangeCategory">
+                            <option value="">All Categories</option>
+                        </select>
+                    </label>
+                    <button class="range-btn" id="rangeSearch" type="button">Search</button>
+                </div>
+                <div id="rangeSummary" class="range-summary" style="display:none"></div>
+                <div id="rangeTable" class="table-wrap"></div>
+            </article>
+        </section>
     </main>
 
-    <script src="script.js?v=6"></script>
+    <script src="script.js?v=9"></script>
 </body>
 </html>

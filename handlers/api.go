@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/yourusername/expense-tracker/models"
 	"github.com/yourusername/expense-tracker/services"
@@ -39,6 +42,55 @@ func transactionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"transactions": transactions})
+}
+
+func transactionsByRangeHandler(w http.ResponseWriter, r *http.Request) {
+	reporting, cleanup, ok := newReportingService(w)
+	if !ok {
+		return
+	}
+	defer cleanup()
+
+	fromStr := r.URL.Query().Get("from")
+	toStr := r.URL.Query().Get("to")
+
+	if fromStr == "" || toStr == "" {
+		http.Error(w, "query params 'from' and 'to' are required (format: 2006-01-02)", http.StatusBadRequest)
+		return
+	}
+
+	from, err := time.Parse("2006-01-02", fromStr)
+	if err != nil {
+		http.Error(w, "invalid 'from' date, expected format: 2006-01-02", http.StatusBadRequest)
+		return
+	}
+	to, err := time.Parse("2006-01-02", toStr)
+	if err != nil {
+		http.Error(w, "invalid 'to' date, expected format: 2006-01-02", http.StatusBadRequest)
+		return
+	}
+	// include the full last day
+	to = to.Add(24*time.Hour - time.Nanosecond)
+
+	limit := 500
+	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
+		if parsed, err := strconv.Atoi(rawLimit); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	transactions, err := reporting.ListTransactionsByDateRange(from, to, r.URL.Query().Get("category"), limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"from":         fromStr,
+		"to":           r.URL.Query().Get("to"),
+		"count":        len(transactions),
+		"transactions": transactions,
+	})
 }
 
 func lastTenDaysTransactionsHandler(w http.ResponseWriter, r *http.Request) {
@@ -197,6 +249,51 @@ func syncHDFCHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func importGooglePayHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
+		http.Error(w, "invalid upload, expected multipart form with HTML file", http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "file field is required", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	dbClient, err := models.NewDatabaseClient()
+	if err != nil {
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return
+	}
+	defer dbClient.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "failed to read uploaded file", http.StatusBadRequest)
+		return
+	}
+
+	summary, err := services.ImportGooglePayHTML(bytes.NewReader(content), dbClient)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Google Pay import failed: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "ok",
+		"job":     "google_pay_import",
+		"summary": summary,
+	})
+}
+
 // serveStaticFiles handles serving the frontend files
 func serveStaticFiles(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/" {
@@ -229,7 +326,9 @@ func StartAPIServer() {
 
 	// Protected API routes
 	http.HandleFunc("/api/jobs/sync-hdfc", syncHDFCHandler)
+	http.HandleFunc("/api/import/google-pay", apiAuthMiddleware(importGooglePayHandler))
 	http.HandleFunc("/api/transactions", apiAuthMiddleware(transactionsHandler))
+	http.HandleFunc("/api/transactions/range", apiAuthMiddleware(transactionsByRangeHandler))
 	http.HandleFunc("/api/transactions/last-10-days", apiAuthMiddleware(lastTenDaysTransactionsHandler))
 	http.HandleFunc("/api/summary/total", apiAuthMiddleware(totalSummaryHandler))
 	http.HandleFunc("/api/summary/category", apiAuthMiddleware(categorySummaryHandler))
