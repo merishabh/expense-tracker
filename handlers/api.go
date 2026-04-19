@@ -216,21 +216,33 @@ func serveStaticFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func StartAPIServer() {
+	InitWebAuth()
+
+	// Auth routes (no middleware)
+	http.HandleFunc("/auth/signin", loginPageHandler)
+	http.HandleFunc("/auth/login", loginHandler)
+	http.HandleFunc("/auth/callback", callbackHandler)
+	http.HandleFunc("/auth/logout", logoutHandler)
+
+	// Public health check
 	http.HandleFunc("/api/health", healthHandler)
+
+	// Protected API routes
 	http.HandleFunc("/api/jobs/sync-hdfc", syncHDFCHandler)
-	http.HandleFunc("/api/transactions", transactionsHandler)
-	http.HandleFunc("/api/transactions/last-10-days", lastTenDaysTransactionsHandler)
-	http.HandleFunc("/api/summary/total", totalSummaryHandler)
-	http.HandleFunc("/api/summary/category", categorySummaryHandler)
-	http.HandleFunc("/api/summary/source", sourceSummaryHandler)
-	http.HandleFunc("/api/summary/trend", trendSummaryHandler)
-	http.HandleFunc("/api/summary/trend/last-10-days", lastTenDaysTrendHandler)
-	http.HandleFunc("/api/summary/monthly-comparison", monthlyComparisonHandler)
+	http.HandleFunc("/api/transactions", apiAuthMiddleware(transactionsHandler))
+	http.HandleFunc("/api/transactions/last-10-days", apiAuthMiddleware(lastTenDaysTransactionsHandler))
+	http.HandleFunc("/api/summary/total", apiAuthMiddleware(totalSummaryHandler))
+	http.HandleFunc("/api/summary/category", apiAuthMiddleware(categorySummaryHandler))
+	http.HandleFunc("/api/summary/source", apiAuthMiddleware(sourceSummaryHandler))
+	http.HandleFunc("/api/summary/trend", apiAuthMiddleware(trendSummaryHandler))
+	http.HandleFunc("/api/summary/trend/last-10-days", apiAuthMiddleware(lastTenDaysTrendHandler))
+	http.HandleFunc("/api/summary/monthly-comparison", apiAuthMiddleware(monthlyComparisonHandler))
 
-	http.HandleFunc("/", serveStaticFiles)
+	// Protected frontend
+	http.HandleFunc("/", webAuthMiddleware(serveStaticFiles))
 
-	log.Println("🚀 API Server starting on :8080")
-	log.Println("🌐 Frontend available at: http://localhost:8080")
+	log.Println("API Server starting on :8080")
+	log.Println("Frontend available at: http://localhost:8080")
 
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)

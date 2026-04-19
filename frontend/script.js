@@ -15,6 +15,10 @@ const dashboardState = {
 
 async function fetchJSON(path) {
     const response = await fetch(path);
+    if (response.status === 401) {
+        window.location.href = '/auth/signin';
+        return;
+    }
     if (!response.ok) {
         const errorText = await response.text();
         throw new Error(errorText || `Request failed: ${response.status}`);
