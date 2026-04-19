@@ -3,12 +3,14 @@ package models
 import (
 	"os"
 	"strings"
+	"time"
 )
 
 // DatabaseClient interface defines the common operations for database access
 type DatabaseClient interface {
 	SaveTransaction(txn Transaction) error
 	FetchAllTransactions() ([]Transaction, error)
+	GetLatestTransactionTimeByType(txType string) (*time.Time, error)
 	SaveUnparsedEmail(body string, headers map[string]string) error
 	GetCategoryMapping(vendor string) (*CategoryMapping, error)
 	SaveCategoryMapping(mapping *CategoryMapping) error

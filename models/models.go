@@ -5,7 +5,7 @@ import (
 )
 
 type Transaction struct {
-	Type            string    `bson:"type" json:"type"`                         // "CreditCard" or "BankTransfer"
+	Type            string    `bson:"type" json:"type"` // "CreditCard" or "BankTransfer"
 	CardEnding      string    `bson:"cardending" json:"card_ending"`
 	DebitedAccount  string    `bson:"debitedaccount" json:"debited_account"`
 	CreditedAccount string    `bson:"creditedaccount" json:"credited_account"`
@@ -39,6 +39,8 @@ var VendorCategoryMapping = map[string]string{
 	"cafe coffee day": "Ordered_Food",
 	"barbeque nation": "Ordered_Food",
 	"haldirams":       "Ordered_Food",
+	"eternal limited": "Ordered_Food",
+	"ETERNAL LIMITED": "Ordered_Food",
 	"blinkit":         "Grocery",
 	"zepto":           "Grocery",
 	"dineout":         "Food",
