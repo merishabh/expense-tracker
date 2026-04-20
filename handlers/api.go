@@ -221,16 +221,18 @@ func syncHDFCHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	fmt.Sprint("Initializing sync hdfc API")
+	log.Printf("bank email sync requested method=%s path=%s remote_addr=%s user_agent=%q", r.Method, r.URL.Path, r.RemoteAddr, r.UserAgent())
 
 	srv, err := InitGmailService()
 	if err != nil {
+		log.Printf("bank email sync failed during gmail init err=%v", err)
 		http.Error(w, fmt.Sprintf("Failed to initialize Gmail service: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	dbClient, err := models.NewDatabaseClient()
 	if err != nil {
+		log.Printf("bank email sync failed during db init err=%v", err)
 		http.Error(w, "Database connection failed", http.StatusInternalServerError)
 		return
 	}
@@ -238,13 +240,16 @@ func syncHDFCHandler(w http.ResponseWriter, r *http.Request) {
 
 	stats, err := services.ProcessEmails(srv, "me", dbClient)
 	if err != nil {
+		log.Printf("bank email sync failed err=%v stats=%+v", err, stats)
 		http.Error(w, fmt.Sprintf("Gmail sync failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("bank email sync completed stats=%+v", stats)
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status": "ok",
-		"job":    "hdfc_email_sync",
+		"job":    "bank_email_sync",
 		"stats":  stats,
 	})
 }
