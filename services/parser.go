@@ -94,22 +94,30 @@ func ParseBankTransaction(text string, dbClient models.DatabaseClient) *models.T
 }
 
 func ParseICICICreditCardTransaction(text string, dbClient models.DatabaseClient) *models.Transaction {
-	// Updated regex to stop vendor capture at first period followed by " The" (before "The Available Credit Limit")
-	re := regexp.MustCompile(`ICICI Bank Credit Card (\w+) has been used for a transaction of INR ([\d,\.]+) on ([A-Za-z]+ \d{1,2}, \d{4}) at (\d{2}:\d{2}:\d{2})\. Info: (.+?)\.\s+The`)
-	match := re.FindStringSubmatch(text)
-	if len(match) == 6 {
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`ICICI Bank Credit Card (\w+) has been used for a transaction of INR ([\d,\.]+) on ([A-Za-z]+ \d{1,2}, \d{4}) at (\d{2}:\d{2}:\d{2})\. Info: (.+?)\.\s+The`),
+		regexp.MustCompile(`ICICI Bank Credit Card (\w+) has been used for a transaction of INR ([\d,\.]+) on ([A-Za-z]+ \d{1,2}, \d{4}) at (\d{2}:\d{2}:\d{2})\. Info: (.+?)\.`),
+	}
+
+	for _, re := range patterns {
+		match := re.FindStringSubmatch(text)
+		if len(match) != 6 {
+			continue
+		}
+
 		amount, err := strconv.ParseFloat(strings.ReplaceAll(match[2], ",", ""), 64)
 		if err != nil {
 			log.Printf("Error parsing amount: %v", err)
 			return nil
 		}
-		// Parse date and time
+
 		datetimeStr := match[3] + " " + match[4]
 		dt, err := time.Parse("Jan 2, 2006 15:04:05", datetimeStr)
 		if err != nil {
 			log.Printf("Error parsing date: %v", err)
 			return nil
 		}
+
 		vendor := strings.TrimSpace(match[5])
 		return &models.Transaction{
 			Type:       "ICICICreditCard",
