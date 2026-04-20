@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/yourusername/expense-tracker/models"
 	"github.com/yourusername/expense-tracker/utils"
@@ -16,6 +17,15 @@ type EmailSyncStats struct {
 	TransactionsSaved  int `json:"transactions_saved"`
 	ParseFailures      int `json:"parse_failures"`
 	SaveFailures       int `json:"save_failures"`
+}
+
+func getHeaderValue(headers []*gmail.MessagePartHeader, name string) string {
+	for _, h := range headers {
+		if strings.EqualFold(h.Name, name) {
+			return h.Value
+		}
+	}
+	return ""
 }
 
 func getMessageBody(payload *gmail.MessagePart) string {
@@ -43,29 +53,37 @@ func getMessageBody(payload *gmail.MessagePart) string {
 func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClient) (EmailSyncStats, error) {
 	stats := EmailSyncStats{}
 	pageToken := ""
+	query := "((from:alerts@hdfcbank.net OR from:alerts@hdfcbank.bank.in) OR (from:credit_cards@icicibank.com OR from:credit_cards@icici.bank.in)) newer_than:1d"
+
+	log.Printf("gmail sync started user=%s query=%q", user, query)
 	for {
-		req := srv.Users.Messages.List(user).Q("(from:alerts@hdfcbank.net OR from:alerts@hdfcbank.bank.in) newer_than:60d").MaxResults(500)
+		req := srv.Users.Messages.List(user).Q(query).MaxResults(500)
 		if pageToken != "" {
 			req = req.PageToken(pageToken)
 		}
 		res, err := req.Do()
 		if err != nil {
-
+			log.Printf("gmail sync list failed user=%s page_token_present=%t err=%v", user, pageToken != "", err)
 			return stats, fmt.Errorf("error fetching gmail messages: %w", err)
 		}
+
+		log.Printf("gmail sync page fetched user=%s messages=%d next_page_token_present=%t", user, len(res.Messages), res.NextPageToken != "")
 
 		for _, msg := range res.Messages {
 			stats.EmailsFetched++
 			m, err := srv.Users.Messages.Get(user, msg.Id).Format("full").Do()
 			if err != nil {
-				fmt.Printf("Error fetching message %s: %v\n", msg.Id, err)
+				log.Printf("gmail sync message fetch failed message_id=%s err=%v", msg.Id, err)
 				stats.ParseFailures++
 				continue
 			}
 
+			subject := getHeaderValue(m.Payload.Headers, "Subject")
+			from := getHeaderValue(m.Payload.Headers, "From")
+
 			body := getMessageBody(m.Payload)
 			if body == "" {
-				fmt.Printf("⚠️ Empty body for message %s, skipping\n", msg.Id)
+				log.Printf("gmail sync empty body message_id=%s from=%q subject=%q", msg.Id, from, subject)
 				stats.ParseFailures++
 				continue
 			}
@@ -74,11 +92,13 @@ func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClie
 			var tx *models.Transaction
 
 			if tx = ParseCreditCardTransaction(cleanBody, dbClient); tx != nil {
-				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
+				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)
+			} else if tx = ParseICICICreditCardTransaction(cleanBody, dbClient); tx != nil {
+				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)
 			} else if tx = ParseBankTransaction(cleanBody, dbClient); tx != nil {
-				fmt.Printf("✅ Parsed %s Transaction:\n%+v\n", tx.Type, *tx)
+				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)
 			} else {
-				fmt.Println("⚠️ No known transaction format detected.")
+				log.Printf("gmail sync unparsed message_id=%s from=%q subject=%q", msg.Id, from, subject)
 				stats.ParseFailures++
 
 				headers := make(map[string]string)
@@ -87,19 +107,19 @@ func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClie
 				}
 
 				if err := dbClient.SaveUnparsedEmail(cleanBody, headers); err != nil {
-					fmt.Println("Failed to save unparsed email:", err)
+					log.Printf("gmail sync save unparsed email failed message_id=%s err=%v", msg.Id, err)
 				} else {
-					fmt.Println("Unparsed email saved to database.")
+					log.Printf("gmail sync saved unparsed email message_id=%s", msg.Id)
 				}
 				continue
 			}
 			stats.TransactionsParsed++
 
 			if err := dbClient.SaveTransaction(*tx); err != nil {
-				fmt.Println("Database save failed:", err)
+				log.Printf("gmail sync transaction save failed message_id=%s type=%s vendor=%q amount=%.2f err=%v", msg.Id, tx.Type, tx.Vendor, tx.Amount, err)
 				stats.SaveFailures++
 			} else {
-				fmt.Println("Transaction saved to database.")
+				log.Printf("gmail sync transaction saved message_id=%s type=%s vendor=%q amount=%.2f", msg.Id, tx.Type, tx.Vendor, tx.Amount)
 				stats.TransactionsSaved++
 			}
 		}
