@@ -12,9 +12,35 @@ import (
 )
 
 func ParseCreditCardTransaction(text string, dbClient models.DatabaseClient) *models.Transaction {
-	// Try new HDFC format: "Rs.304.00 is debited from your HDFC Bank Credit Card ending 4207 towards RAZORPAY LICIOUS on 09 Jan, 2026 at 16:28:26."
-	re := regexp.MustCompile(`Rs\.?([\d,\.]+)\s+is\s+debited\s+from\s+your\s+HDFC\s+Bank\s+Credit\s+Card\s+ending\s+(\d+)\s+towards\s+(.+?)\s+on\s+(\d{1,2}\s+[A-Za-z]{3},\s+\d{4})\s+at\s+(\d{2}:\d{2}:\d{2})`)
+	// Try HDFC format: "Rs. 3241.00 has been debited from your HDFC Bank Credit Card ending 4207 towards WWW MYNTRA COM on 20 Apr, 2026 at 10:20:18."
+	re := regexp.MustCompile(`Rs\.?\s*([\d,\.]+)\s+has\s+been\s+debited\s+from\s+your\s+HDFC\s+Bank\s+Credit\s+Card\s+ending\s+(\d+)\s+towards\s+(.+?)\s+on\s+(\d{1,2}\s+[A-Za-z]{3},\s+\d{4})\s+at\s+(\d{2}:\d{2}:\d{2})`)
 	match := re.FindStringSubmatch(text)
+	if len(match) == 6 {
+		amount, err := strconv.ParseFloat(strings.ReplaceAll(match[1], ",", ""), 64)
+		if err != nil {
+			log.Printf("Error parsing amount: %v", err)
+			return nil
+		}
+		datetimeStr := match[4] + " " + match[5]
+		dt, err := time.Parse("2 Jan, 2006 15:04:05", datetimeStr)
+		if err != nil {
+			log.Printf("Error parsing date: %v", err)
+			return nil
+		}
+		vendor := strings.TrimSpace(match[3])
+		return &models.Transaction{
+			Type:       "HDFCCreditCard",
+			CardEnding: match[2],
+			Amount:     amount,
+			Vendor:     vendor,
+			DateTime:   dt,
+			Category:   CategorizeTransaction(vendor, dbClient),
+		}
+	}
+
+	// Try new HDFC format: "Rs.304.00 is debited from your HDFC Bank Credit Card ending 4207 towards RAZORPAY LICIOUS on 09 Jan, 2026 at 16:28:26."
+	re = regexp.MustCompile(`Rs\.?([\d,\.]+)\s+is\s+debited\s+from\s+your\s+HDFC\s+Bank\s+Credit\s+Card\s+ending\s+(\d+)\s+towards\s+(.+?)\s+on\s+(\d{1,2}\s+[A-Za-z]{3},\s+\d{4})\s+at\s+(\d{2}:\d{2}:\d{2})`)
+	match = re.FindStringSubmatch(text)
 	if len(match) == 6 {
 		amount, err := strconv.ParseFloat(strings.ReplaceAll(match[1], ",", ""), 64)
 		if err != nil {

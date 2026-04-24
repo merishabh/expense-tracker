@@ -14,7 +14,8 @@ const dashboardState = {
     selectedCategory: null,
     categories: [],
     periodTransactions: [],
-    lastTenDaysTransactions: []
+    lastTenDaysTransactions: [],
+    txMap: {}
 };
 
 async function fetchJSON(path) {
@@ -149,7 +150,12 @@ function getFilteredTransactionsByCategory(category) {
     return dashboardState.periodTransactions.filter(tx => getTxCategory(tx).toLowerCase() === selected);
 }
 
+function registerTxMap(transactions) {
+    transactions.forEach(tx => { if (tx.id) dashboardState.txMap[tx.id] = tx; });
+}
+
 function renderTransactions(transactions, emptyMessage = 'No transactions found.') {
+    registerTxMap(transactions);
     const container = document.getElementById('transactionTable');
     if (!container) return;
 
@@ -159,7 +165,7 @@ function renderTransactions(transactions, emptyMessage = 'No transactions found.
     }
 
     const rows = transactions.map(tx => `
-        <tr>
+        <tr class="tx-row" data-id="${tx.id || ''}">
             <td>${formatDateTime(tx.date_time)}</td>
             <td>${tx.vendor || '-'}</td>
             <td>${formatCategory(tx.category || 'Other')}</td>
@@ -334,8 +340,9 @@ function renderRangeResults(data) {
         return;
     }
 
+    registerTxMap(transactions);
     const rows = transactions.map(tx => `
-        <tr>
+        <tr class="tx-row" data-id="${tx.id || ''}">
             <td>${formatDateTime(tx.date_time)}</td>
             <td>${tx.vendor || '-'}</td>
             <td>${formatCategory(tx.category || 'Other')}</td>
@@ -355,18 +362,56 @@ function renderRangeResults(data) {
 }
 
 function renderGooglePayImportResult(summary) {
-    const result = document.getElementById('googlePayImportResult');
-    if (!result) return;
-
-    result.style.display = 'grid';
-    result.innerHTML = `
+    return `
+        <div class="range-stat"><span>Processed</span><strong>${summary.processed_count || 0}${summary.total_blocks ? ` / ${summary.total_blocks}` : ''}</strong></div>
         <div class="range-stat"><span>Imported</span><strong>${summary.imported_count || 0}</strong></div>
         <div class="range-stat"><span>Skipped Old</span><strong>${summary.skipped_old_count || 0}</strong></div>
         <div class="range-stat"><span>Skipped Status</span><strong>${summary.skipped_status_count || 0}</strong></div>
         <div class="range-stat"><span>Skipped Invalid</span><strong>${summary.skipped_invalid_count || 0}</strong></div>
+        <div class="range-stat"><span>Batches</span><strong>${summary.batch_count || 0}</strong></div>
         <div class="range-stat"><span>Latest Stored</span><strong>${formatDateTime(summary.latest_stored_at)}</strong></div>
         <div class="range-stat"><span>Latest Imported</span><strong>${formatDateTime(summary.latest_imported_at)}</strong></div>
     `;
+}
+
+function renderGooglePayImportJob(job) {
+    const result = document.getElementById('googlePayImportResult');
+    if (!result) return;
+
+    const summary = job?.summary || {};
+    const status = String(job?.status || 'queued');
+    const title = status === 'completed'
+        ? 'Import completed.'
+        : status === 'failed'
+            ? `Import failed: ${job.error || 'Unknown error'}`
+            : 'Import running in background...';
+
+    result.style.display = 'block';
+    result.innerHTML = `
+        <p class="empty">${title}</p>
+        <div class="import-result-grid">
+            ${renderGooglePayImportResult(summary)}
+        </div>
+    `;
+}
+
+async function waitForGooglePayImport(jobId) {
+    while (true) {
+        const response = await fetchJSON(`/api/import/google-pay?id=${encodeURIComponent(jobId)}`);
+        const job = response?.import;
+        if (job) {
+            renderGooglePayImportJob(job);
+        }
+
+        if (!job || job.status === 'completed') {
+            return job;
+        }
+        if (job.status === 'failed') {
+            throw new Error(job.error || 'Google Pay import failed');
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1500));
+    }
 }
 
 async function uploadGooglePayHistory() {
@@ -384,10 +429,10 @@ async function uploadGooglePayHistory() {
     formData.append('file', file);
 
     button.disabled = true;
-    button.textContent = 'Uploading…';
+    button.textContent = 'Queueing…';
     if (result) {
         result.style.display = 'block';
-        result.innerHTML = '<p class="empty">Import in progress...</p>';
+        result.innerHTML = '<p class="empty">Preparing import...</p>';
     }
 
     try {
@@ -395,10 +440,14 @@ async function uploadGooglePayHistory() {
             method: 'POST',
             body: formData
         });
-
-        if (response?.summary) {
-            renderGooglePayImportResult(response.summary);
+        const jobId = response?.job_id;
+        if (!jobId) {
+            throw new Error('Import job was not created');
         }
+
+        button.textContent = 'Importing…';
+        const job = await waitForGooglePayImport(jobId);
+        renderGooglePayImportJob(job);
 
         fileInput.value = '';
         await loadDashboard();
@@ -411,6 +460,105 @@ async function uploadGooglePayHistory() {
     } finally {
         button.disabled = false;
         button.textContent = 'Upload History';
+    }
+}
+
+function openEditModal(tx) {
+    document.getElementById('editId').value = tx.id || '';
+    document.getElementById('editType').value = tx.type || 'Manual';
+    document.getElementById('editVendor').value = tx.vendor || '';
+    document.getElementById('editAmount').value = tx.amount || '';
+    document.getElementById('editCategory').value = tx.category || '';
+    document.getElementById('editDate').value = tx.date_time ? tx.date_time.slice(0, 10) : '';
+    document.getElementById('editResult').style.display = 'none';
+    const modal = document.getElementById('editModal');
+    modal.style.display = 'flex';
+}
+
+function closeEditModal() {
+    document.getElementById('editModal').style.display = 'none';
+}
+
+async function saveEditedTransaction() {
+    const id = document.getElementById('editId').value;
+    const type = document.getElementById('editType').value;
+    const vendor = document.getElementById('editVendor').value.trim();
+    const amount = parseFloat(document.getElementById('editAmount').value);
+    const rawCategory = document.getElementById('editCategory').value;
+    const category = rawCategory === '__new__'
+        ? document.getElementById('editCategoryNew')?.value.trim()
+        : rawCategory;
+    const date = document.getElementById('editDate').value;
+    const btn = document.getElementById('editSave');
+    const result = document.getElementById('editResult');
+
+    if (!vendor) { alert('Merchant is required.'); return; }
+    if (!amount || amount <= 0) { alert('Enter a valid amount.'); return; }
+    if (!date) { alert('Date is required.'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    try {
+        await sendJSON('/api/transactions/update', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, type, vendor, amount, category, date_time: date })
+        });
+        result.style.display = 'block';
+        result.innerHTML = `<p class="empty" style="color:#16a34a">Saved successfully.</p>`;
+        await loadDashboard();
+        setTimeout(closeEditModal, 800);
+    } catch (err) {
+        result.style.display = 'block';
+        result.innerHTML = `<p class="empty">Error: ${err.message}</p>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+    }
+}
+
+async function addManualTransaction() {
+    const type = document.getElementById('manualType')?.value || 'Manual';
+    const vendor = document.getElementById('manualVendor')?.value.trim();
+    const amount = parseFloat(document.getElementById('manualAmount')?.value);
+    const rawCategory = document.getElementById('manualCategory')?.value;
+    const category = rawCategory === '__new__'
+        ? document.getElementById('manualCategoryNew')?.value.trim()
+        : rawCategory;
+    const date = document.getElementById('manualDate')?.value;
+    const btn = document.getElementById('manualSubmit');
+    const result = document.getElementById('manualResult');
+
+    if (!vendor) { alert('Please enter a merchant name.'); return; }
+    if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+    if (!date) { alert('Please select a date.'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    result.style.display = 'none';
+
+    try {
+        await sendJSON('/api/transactions/manual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, vendor, amount, category, date_time: date })
+        });
+
+        result.style.display = 'block';
+        result.innerHTML = `<p class="empty" style="color:#16a34a">Transaction saved: ${vendor} — ${formatCurrency(amount)}</p>`;
+        document.getElementById('manualVendor').value = '';
+        document.getElementById('manualAmount').value = '';
+        document.getElementById('manualCategory').value = '';
+        const manualCatNew = document.getElementById('manualCategoryNew');
+        if (manualCatNew) { manualCatNew.value = ''; manualCatNew.style.display = 'none'; }
+        await loadDashboard();
+    } catch (err) {
+        result.style.display = 'block';
+        result.innerHTML = `<p class="empty">Error: ${err.message}</p>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Add Transaction';
     }
 }
 
@@ -500,6 +648,33 @@ document.addEventListener('DOMContentLoaded', () => {
         googlePayUpload.addEventListener('click', uploadGooglePayHistory);
     }
 
+    const manualSubmit = document.getElementById('manualSubmit');
+    if (manualSubmit) {
+        manualSubmit.addEventListener('click', addManualTransaction);
+    }
+
+    document.getElementById('manualCategory')?.addEventListener('change', (e) => {
+        const newInput = document.getElementById('manualCategoryNew');
+        if (newInput) newInput.style.display = e.target.value === '__new__' ? 'block' : 'none';
+    });
+    document.getElementById('editCategory')?.addEventListener('change', (e) => {
+        const newInput = document.getElementById('editCategoryNew');
+        if (newInput) newInput.style.display = e.target.value === '__new__' ? 'block' : 'none';
+    });
+    document.getElementById('editModalClose')?.addEventListener('click', closeEditModal);
+    document.getElementById('editSave')?.addEventListener('click', saveEditedTransaction);
+    document.getElementById('editModal')?.addEventListener('click', (e) => {
+        if (e.target === document.getElementById('editModal')) closeEditModal();
+    });
+
+    document.addEventListener('click', (e) => {
+        const row = e.target.closest('.tx-row');
+        if (!row) return;
+        const id = row.getAttribute('data-id');
+        const tx = id && dashboardState.txMap[id];
+        if (tx) openEditModal(tx);
+    });
+
     // default date range to current month
     const today = new Date();
     const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -508,6 +683,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const toInput = document.getElementById('rangeTo');
     if (fromInput) fromInput.value = fmt(firstOfMonth);
     if (toInput) toInput.value = fmt(today);
+    const manualDate = document.getElementById('manualDate');
+    if (manualDate) manualDate.value = fmt(today);
 
     loadDashboard();
 });
