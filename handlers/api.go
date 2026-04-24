@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -216,6 +215,127 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func updateTransactionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Only PUT method allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		ID       string  `json:"id"`
+		Type     string  `json:"type"`
+		Vendor   string  `json:"vendor"`
+		Amount   float64 `json:"amount"`
+		Category string  `json:"category"`
+		DateTime string  `json:"date_time"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+	if body.Vendor == "" || body.Amount <= 0 {
+		http.Error(w, "vendor and amount are required", http.StatusBadRequest)
+		return
+	}
+
+	dt, err := time.Parse("2006-01-02T15:04", body.DateTime)
+	if err != nil {
+		dt, err = time.Parse("2006-01-02", body.DateTime)
+		if err != nil {
+			http.Error(w, "invalid date_time format, expected YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
+	}
+
+	tx := models.Transaction{
+		Type:     body.Type,
+		Vendor:   body.Vendor,
+		Amount:   body.Amount,
+		Category: body.Category,
+		DateTime: dt,
+	}
+
+	dbClient, err := models.NewDatabaseClient()
+	if err != nil {
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return
+	}
+	defer dbClient.Close()
+
+	if err := dbClient.UpdateTransaction(body.ID, tx); err != nil {
+		log.Printf("transaction update failed id=%s err=%v", body.ID, err)
+		http.Error(w, "Failed to update transaction", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("transaction updated id=%s vendor=%q amount=%.2f category=%q", body.ID, tx.Vendor, tx.Amount, tx.Category)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "ok"})
+}
+
+func addManualTransactionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Type     string  `json:"type"`
+		Vendor   string  `json:"vendor"`
+		Amount   float64 `json:"amount"`
+		Category string  `json:"category"`
+		DateTime string  `json:"date_time"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if body.Vendor == "" || body.Amount <= 0 {
+		http.Error(w, "vendor and amount are required", http.StatusBadRequest)
+		return
+	}
+
+	dt, err := time.Parse("2006-01-02T15:04", body.DateTime)
+	if err != nil {
+		dt, err = time.Parse("2006-01-02", body.DateTime)
+		if err != nil {
+			http.Error(w, "invalid date_time format, expected YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
+	}
+
+	txType := body.Type
+	if txType == "" {
+		txType = "Manual"
+	}
+	tx := models.Transaction{
+		Type:     txType,
+		Vendor:   body.Vendor,
+		Amount:   body.Amount,
+		Category: body.Category,
+		DateTime: dt,
+	}
+
+	dbClient, err := models.NewDatabaseClient()
+	if err != nil {
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return
+	}
+	defer dbClient.Close()
+
+	if err := dbClient.SaveTransaction(tx); err != nil {
+		log.Printf("manual transaction save failed vendor=%q amount=%.2f err=%v", tx.Vendor, tx.Amount, err)
+		http.Error(w, "Failed to save transaction", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("manual transaction saved vendor=%q amount=%.2f category=%q", tx.Vendor, tx.Amount, tx.Category)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "ok", "transaction": tx})
+}
+
 func syncHDFCHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
@@ -255,11 +375,17 @@ func syncHDFCHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func importGooglePayHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
-		return
+	switch r.Method {
+	case http.MethodPost:
+		startGooglePayImportHandler(w, r)
+	case http.MethodGet:
+		googlePayImportStatusHandler(w, r)
+	default:
+		http.Error(w, "Only GET and POST methods allowed", http.StatusMethodNotAllowed)
 	}
+}
 
+func startGooglePayImportHandler(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
 	if err := r.ParseMultipartForm(50 << 20); err != nil {
 		http.Error(w, "invalid upload, expected multipart form with HTML file", http.StatusBadRequest)
@@ -273,29 +399,39 @@ func importGooglePayHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	dbClient, err := models.NewDatabaseClient()
-	if err != nil {
-		http.Error(w, "Database connection failed", http.StatusInternalServerError)
-		return
-	}
-	defer dbClient.Close()
-
 	content, err := io.ReadAll(file)
 	if err != nil {
 		http.Error(w, "failed to read uploaded file", http.StatusBadRequest)
 		return
 	}
 
-	summary, err := services.ImportGooglePayHTML(bytes.NewReader(content), dbClient)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Google Pay import failed: %v", err), http.StatusBadRequest)
+	job := googlePayImports.Start(content)
+
+	writeJSON(w, http.StatusAccepted, map[string]interface{}{
+		"status": "accepted",
+		"job":    "google_pay_import",
+		"job_id": job.ID,
+		"import": job,
+	})
+}
+
+func googlePayImportStatusHandler(w http.ResponseWriter, r *http.Request) {
+	jobID := r.URL.Query().Get("id")
+	if jobID == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+
+	job, ok := googlePayImports.Get(jobID)
+	if !ok {
+		http.Error(w, "import job not found", http.StatusNotFound)
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":  "ok",
-		"job":     "google_pay_import",
-		"summary": summary,
+		"status": "ok",
+		"job":    "google_pay_import",
+		"import": job,
 	})
 }
 
@@ -331,6 +467,8 @@ func StartAPIServer() {
 
 	// Protected API routes
 	http.HandleFunc("/api/jobs/sync-hdfc", syncHDFCHandler)
+	http.HandleFunc("/api/transactions/manual", apiAuthMiddleware(addManualTransactionHandler))
+	http.HandleFunc("/api/transactions/update", apiAuthMiddleware(updateTransactionHandler))
 	http.HandleFunc("/api/import/google-pay", apiAuthMiddleware(importGooglePayHandler))
 	http.HandleFunc("/api/transactions", apiAuthMiddleware(transactionsHandler))
 	http.HandleFunc("/api/transactions/range", apiAuthMiddleware(transactionsByRangeHandler))

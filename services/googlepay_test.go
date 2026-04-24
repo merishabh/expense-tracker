@@ -1,6 +1,7 @@
 package services
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -9,17 +10,30 @@ import (
 )
 
 type googlePayTestDB struct {
-	latest *time.Time
-	saved  []models.Transaction
+	latest         *time.Time
+	saved          []models.Transaction
+	saveCalls      int
+	batchSaveCalls int
 }
 
 func (d *googlePayTestDB) SaveTransaction(txn models.Transaction) error {
+	d.saveCalls++
 	d.saved = append(d.saved, txn)
+	return nil
+}
+
+func (d *googlePayTestDB) SaveTransactions(txns []models.Transaction) error {
+	d.batchSaveCalls++
+	d.saved = append(d.saved, txns...)
 	return nil
 }
 
 func (d *googlePayTestDB) FetchAllTransactions() ([]models.Transaction, error) {
 	return nil, nil
+}
+
+func (d *googlePayTestDB) UpdateTransaction(id string, txn models.Transaction) error {
+	return nil
 }
 
 func (d *googlePayTestDB) GetLatestTransactionTimeByType(txType string) (*time.Time, error) {
@@ -91,8 +105,8 @@ func TestImportGooglePayHTMLStopsAtLatestStoredTransaction(t *testing.T) {
 		t.Fatalf("unexpected vendor %q", db.saved[0].Vendor)
 	}
 
-	if db.saved[0].Category != "Other" {
-		t.Fatalf("expected category Other, got %q", db.saved[0].Category)
+	if db.saved[0].Category != "Food" {
+		t.Fatalf("expected category Food, got %q", db.saved[0].Category)
 	}
 }
 
@@ -122,5 +136,61 @@ func TestImportGooglePayHTMLCategorizesRecognizedMerchants(t *testing.T) {
 
 	if db.saved[0].Category != "Bills" {
 		t.Fatalf("expected category Bills, got %q", db.saved[0].Category)
+	}
+}
+
+func TestImportGooglePayHTMLBatchesWritesAndReportsProgress(t *testing.T) {
+	db := &googlePayTestDB{}
+
+	var builder strings.Builder
+	builder.WriteString("<html><body>")
+	for i := 0; i < googlePayBatchSize+1; i++ {
+		builder.WriteString(`
+<div class="outer-cell mdl-cell mdl-cell--12-col mdl-shadow--2dp"><div class="mdl-grid">
+<div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">Paid ₹100.00 to Merchant `)
+		builder.WriteString(strconv.Itoa(i))
+		builder.WriteString(` using Bank Account XXXXXXXX0000<br>Apr 20, 2026, 8:31:30 AM GMT+05:30<br></div>
+<div class="content-cell mdl-cell mdl-cell--12-col mdl-typography--caption"><b>Details:</b><br>&emsp;`)
+		builder.WriteString(strconv.Itoa(i))
+		builder.WriteString(`<br>&emsp;Completed<br></div>
+</div></div>`)
+	}
+	builder.WriteString("</body></html>")
+
+	var progress []GooglePayImportSummary
+	summary, err := ImportGooglePayHTMLWithProgress(strings.NewReader(builder.String()), db, func(summary GooglePayImportSummary) {
+		progress = append(progress, summary)
+	})
+	if err != nil {
+		t.Fatalf("ImportGooglePayHTMLWithProgress returned error: %v", err)
+	}
+
+	if summary.ImportedCount != googlePayBatchSize+1 {
+		t.Fatalf("expected %d imported transactions, got %d", googlePayBatchSize+1, summary.ImportedCount)
+	}
+
+	if summary.BatchCount != 2 {
+		t.Fatalf("expected 2 batch writes, got %d", summary.BatchCount)
+	}
+
+	if summary.PendingCount != 0 {
+		t.Fatalf("expected no pending transactions after import, got %d", summary.PendingCount)
+	}
+
+	if db.batchSaveCalls != 2 {
+		t.Fatalf("expected 2 SaveTransactions calls, got %d", db.batchSaveCalls)
+	}
+
+	if db.saveCalls != 0 {
+		t.Fatalf("expected SaveTransaction fallback to be unused, got %d calls", db.saveCalls)
+	}
+
+	if len(progress) == 0 {
+		t.Fatalf("expected progress updates to be emitted")
+	}
+
+	last := progress[len(progress)-1]
+	if last.ImportedCount != summary.ImportedCount || last.ProcessedCount != summary.ProcessedCount {
+		t.Fatalf("expected final progress update to match summary, got %+v want %+v", last, summary)
 	}
 }

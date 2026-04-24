@@ -306,7 +306,14 @@ body {
     margin-top: 18px;
 }
 
-.range-form {
+.import-result-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.range-form,
+.manual-form {
     display: flex;
     flex-wrap: wrap;
     gap: 16px;
@@ -399,6 +406,64 @@ td {
     text-align: left;
     padding: 12px 8px;
     border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.tx-row {
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.tx-row:hover {
+    background: rgba(99, 102, 241, 0.06);
+}
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-card {
+    background: white;
+    border-radius: 20px;
+    padding: 28px;
+    width: 100%;
+    max-width: 560px;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+}
+
+.modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.modal-head h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: #64748b;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.modal-close:hover {
+    background: #f1f5f9;
+}
+
+.modal-actions {
+    margin-top: 16px;
 }
 
 @media (max-width: 768px) {
