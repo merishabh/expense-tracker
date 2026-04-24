@@ -272,8 +272,8 @@ async function loadDashboard() {
 
         document.getElementById('totalAmount').textContent = formatCurrency(summary.total_amount);
         document.getElementById('transactionCount').textContent = String(summary.transaction_count || 0);
-        document.getElementById('averageAmount').textContent = formatCurrency(summary.average_amount);
-        document.getElementById('uncategorizedCount').textContent = String(summary.uncategorized_count || 0);
+        document.getElementById('averageAmount').textContent = formatCurrency(summary.gross_expense);
+        document.getElementById('uncategorizedCount').textContent = formatCurrency(summary.credit_amount);
 
         dashboardState.categories = categories.items || [];
         dashboardState.periodTransactions = transactions.transactions || [];
@@ -493,7 +493,7 @@ async function saveEditedTransaction() {
     const result = document.getElementById('editResult');
 
     if (!vendor) { alert('Merchant is required.'); return; }
-    if (!amount || amount <= 0) { alert('Enter a valid amount.'); return; }
+    if (!Number.isFinite(amount) || amount === 0) { alert('Enter a non-zero amount.'); return; }
     if (!date) { alert('Date is required.'); return; }
 
     btn.disabled = true;
@@ -531,7 +531,7 @@ async function addManualTransaction() {
     const result = document.getElementById('manualResult');
 
     if (!vendor) { alert('Please enter a merchant name.'); return; }
-    if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+    if (!Number.isFinite(amount) || amount === 0) { alert('Please enter a non-zero amount.'); return; }
     if (!date) { alert('Please select a date.'); return; }
 
     btn.disabled = true;

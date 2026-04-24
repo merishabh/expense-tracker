@@ -18,6 +18,8 @@ type TotalSummary struct {
 	Period             string  `json:"period"`
 	TransactionCount   int     `json:"transaction_count"`
 	TotalAmount        float64 `json:"total_amount"`
+	GrossExpense       float64 `json:"gross_expense"`
+	CreditAmount       float64 `json:"credit_amount"`
 	AverageAmount      float64 `json:"average_amount"`
 	UncategorizedCount int     `json:"uncategorized_count"`
 }
@@ -89,14 +91,19 @@ func (s *ReportingService) GetTotalSummary(period string) (TotalSummary, error) 
 
 	summary := TotalSummary{Period: normalizePeriod(period)}
 	for _, tx := range txs {
-		summary.TotalAmount += tx.Amount
 		summary.TransactionCount++
+		if tx.Amount < 0 {
+			summary.CreditAmount += -tx.Amount
+		} else {
+			summary.GrossExpense += tx.Amount
+		}
 		if strings.TrimSpace(tx.Category) == "" || strings.EqualFold(tx.Category, "Other") {
 			summary.UncategorizedCount++
 		}
 	}
+	summary.TotalAmount = summary.GrossExpense - summary.CreditAmount
 	if summary.TransactionCount > 0 {
-		summary.AverageAmount = summary.TotalAmount / float64(summary.TransactionCount)
+		summary.AverageAmount = summary.GrossExpense / float64(summary.TransactionCount)
 	}
 
 	return summary, nil
@@ -248,7 +255,7 @@ func (s *ReportingService) GetMonthlyComparison() (MonthlyComparison, error) {
 	for _, tx := range currentMonthTxs {
 		comparison.CurrentMonthAmount += tx.Amount
 		comparison.CurrentMonthCount++
-		if tx.Vendor != "" {
+		if tx.Vendor != "" && tx.Amount > 0 {
 			topMerchantTotals[tx.Vendor] += tx.Amount
 		}
 	}

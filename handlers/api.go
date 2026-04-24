@@ -237,8 +237,8 @@ func updateTransactionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	if body.Vendor == "" || body.Amount <= 0 {
-		http.Error(w, "vendor and amount are required", http.StatusBadRequest)
+	if body.Vendor == "" || body.Amount == 0 {
+		http.Error(w, "vendor and non-zero amount are required", http.StatusBadRequest)
 		return
 	}
 
@@ -293,8 +293,8 @@ func addManualTransactionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
-	if body.Vendor == "" || body.Amount <= 0 {
-		http.Error(w, "vendor and amount are required", http.StatusBadRequest)
+	if body.Vendor == "" || body.Amount == 0 {
+		http.Error(w, "vendor and non-zero amount are required", http.StatusBadRequest)
 		return
 	}
 

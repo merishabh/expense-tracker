@@ -5,15 +5,19 @@ import (
 )
 
 type Transaction struct {
-	ID              string    `bson:"-" json:"id"`
-	Type            string    `bson:"type" json:"type"`
-	CardEnding      string    `bson:"cardending" json:"card_ending"`
-	DebitedAccount  string    `bson:"debitedaccount" json:"debited_account"`
-	CreditedAccount string    `bson:"creditedaccount" json:"credited_account"`
-	Amount          float64   `bson:"amount" json:"amount"`
-	Vendor          string    `bson:"vendor" json:"vendor"`
-	DateTime        time.Time `bson:"datetime" json:"date_time"`
-	Category        string    `bson:"category" json:"category"`
+	ID              string    `bson:"-" firestore:"-" json:"id"`
+	Type            string    `bson:"type" firestore:"type" json:"type"`
+	CardEnding      string    `bson:"cardending" firestore:"cardending" json:"card_ending"`
+	DebitedAccount  string    `bson:"debitedaccount" firestore:"debitedaccount" json:"debited_account"`
+	CreditedAccount string    `bson:"creditedaccount" firestore:"creditedaccount" json:"credited_account"`
+	Amount          float64   `bson:"amount" firestore:"amount" json:"amount"`
+	Vendor          string    `bson:"vendor" firestore:"vendor" json:"vendor"`
+	DateTime        time.Time `bson:"datetime" firestore:"datetime" json:"date_time"`
+	Category        string    `bson:"category" firestore:"category" json:"category"`
+}
+
+func (t Transaction) IsCredit() bool {
+	return t.Amount < 0
 }
 
 // CategoryMapping represents a vendor-to-category mapping stored in MongoDB
@@ -106,4 +110,11 @@ var VendorCategoryMapping = map[string]string{
 	"brewpub":                                 "Food",
 	"pub":                                     "Food",
 	"reliance retail limited":                 "Shopping",
+	"filling statio":                          "Petrol",
+	"station":                                 "Petrol",
+	"coco krpuram":                            "Petrol",
+	"coco kr puram":                           "Petrol",
+	"sai krishna service st":                  "Petrol",
+	"saikrishna service sta":                  "Petrol",
+	"iocl":                                    "Petrol",
 }
