@@ -10,6 +10,7 @@ import (
 	"github.com/yourusername/expense-tracker/utils"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -130,6 +131,31 @@ func (m *MongoClient) SaveTransaction(txn Transaction) error {
 	return nil
 }
 
+func (m *MongoClient) SaveTransactions(txns []Transaction) error {
+	if len(txns) == 0 {
+		return nil
+	}
+
+	collection := m.Database.Collection("transactions")
+	docs := make([]interface{}, len(txns))
+	for i, txn := range txns {
+		docs[i] = txn
+	}
+
+	result, err := collection.InsertMany(m.Ctx, docs)
+	if err != nil {
+		return fmt.Errorf("failed to insert transactions: %v", err)
+	}
+
+	fmt.Printf("Saved %d transactions to MongoDB\n", len(result.InsertedIDs))
+	return nil
+}
+
+type mongoTransaction struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty"`
+	Transaction `bson:",inline"`
+}
+
 // FetchAllTransactions retrieves all transactions from MongoDB
 func (m *MongoClient) FetchAllTransactions() ([]Transaction, error) {
 	collection := m.Database.Collection("transactions")
@@ -140,13 +166,45 @@ func (m *MongoClient) FetchAllTransactions() ([]Transaction, error) {
 	}
 	defer cursor.Close(m.Ctx)
 
-	var transactions []Transaction
-	if err := cursor.All(m.Ctx, &transactions); err != nil {
+	var docs []mongoTransaction
+	if err := cursor.All(m.Ctx, &docs); err != nil {
 		return nil, fmt.Errorf("failed to decode transactions: %v", err)
+	}
+
+	transactions := make([]Transaction, len(docs))
+	for i, doc := range docs {
+		transactions[i] = doc.Transaction
+		transactions[i].ID = doc.ID.Hex()
 	}
 
 	fmt.Printf("📊 Fetched %d transactions from MongoDB\n", len(transactions))
 	return transactions, nil
+}
+
+// UpdateTransaction updates an existing transaction by ID
+func (m *MongoClient) UpdateTransaction(id string, tx Transaction) error {
+	collection := m.Database.Collection("transactions")
+
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return fmt.Errorf("invalid transaction ID: %v", err)
+	}
+
+	update := bson.M{"$set": bson.M{
+		"type":            tx.Type,
+		"vendor":          tx.Vendor,
+		"amount":          tx.Amount,
+		"category":        tx.Category,
+		"datetime":        tx.DateTime,
+		"cardending":      tx.CardEnding,
+		"debitedaccount":  tx.DebitedAccount,
+		"creditedaccount": tx.CreditedAccount,
+	}}
+	_, err = collection.UpdateOne(m.Ctx, bson.M{"_id": objID}, update)
+	if err != nil {
+		return fmt.Errorf("failed to update transaction: %v", err)
+	}
+	return nil
 }
 
 func (m *MongoClient) GetLatestTransactionTimeByType(txType string) (*time.Time, error) {

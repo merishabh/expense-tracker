@@ -9,6 +9,7 @@ import (
 // DatabaseClient interface defines the common operations for database access
 type DatabaseClient interface {
 	SaveTransaction(txn Transaction) error
+	UpdateTransaction(id string, txn Transaction) error
 	FetchAllTransactions() ([]Transaction, error)
 	GetLatestTransactionTimeByType(txType string) (*time.Time, error)
 	SaveUnparsedEmail(body string, headers map[string]string) error
