@@ -49,6 +49,25 @@ func (f *FirestoreClient) SaveTransaction(txn Transaction) error {
 	return nil
 }
 
+func (f *FirestoreClient) SaveTransactions(txns []Transaction) error {
+	if len(txns) == 0 {
+		return nil
+	}
+
+	batch := f.Client.Batch()
+	for _, txn := range txns {
+		docRef := f.Client.Collection("transactions").NewDoc()
+		batch.Set(docRef, txn)
+	}
+
+	if _, err := batch.Commit(f.Ctx); err != nil {
+		return fmt.Errorf("failed to insert transactions: %v", err)
+	}
+
+	fmt.Printf("Saved %d transactions to Firestore\n", len(txns))
+	return nil
+}
+
 // FetchAllTransactions retrieves all transactions from Firestore
 func (f *FirestoreClient) FetchAllTransactions() ([]Transaction, error) {
 	var txs []Transaction
@@ -66,10 +85,29 @@ func (f *FirestoreClient) FetchAllTransactions() ([]Transaction, error) {
 		if err := doc.DataTo(&tx); err != nil {
 			return nil, err
 		}
+		tx.ID = doc.Ref.ID
 		txs = append(txs, tx)
 	}
 	fmt.Printf("📊 Fetched %d transactions from Firestore\n", len(txs))
 	return txs, nil
+}
+
+// UpdateTransaction updates an existing transaction by ID
+func (f *FirestoreClient) UpdateTransaction(id string, tx Transaction) error {
+	_, err := f.Client.Collection("transactions").Doc(id).Set(f.Ctx, map[string]interface{}{
+		"type":            tx.Type,
+		"vendor":          tx.Vendor,
+		"amount":          tx.Amount,
+		"category":        tx.Category,
+		"datetime":        tx.DateTime,
+		"cardending":      tx.CardEnding,
+		"debitedaccount":  tx.DebitedAccount,
+		"creditedaccount": tx.CreditedAccount,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update transaction: %v", err)
+	}
+	return nil
 }
 
 func (f *FirestoreClient) GetLatestTransactionTimeByType(txType string) (*time.Time, error) {

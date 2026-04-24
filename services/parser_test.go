@@ -10,6 +10,9 @@ import (
 type parserTestDB struct{}
 
 func (d *parserTestDB) SaveTransaction(txn models.Transaction) error { return nil }
+func (d *parserTestDB) UpdateTransaction(id string, txn models.Transaction) error {
+	return nil
+}
 func (d *parserTestDB) FetchAllTransactions() ([]models.Transaction, error) {
 	return nil, nil
 }

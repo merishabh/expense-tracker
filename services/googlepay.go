@@ -16,10 +16,14 @@ const GooglePayTransactionType = "GooglePay"
 
 type GooglePayImportSummary struct {
 	LatestStoredAt       *time.Time `json:"latest_stored_at,omitempty"`
+	TotalBlocks          int        `json:"total_blocks"`
+	ProcessedCount       int        `json:"processed_count"`
 	ImportedCount        int        `json:"imported_count"`
 	SkippedOldCount      int        `json:"skipped_old_count"`
 	SkippedStatusCount   int        `json:"skipped_status_count"`
 	SkippedInvalidCount  int        `json:"skipped_invalid_count"`
+	BatchCount           int        `json:"batch_count"`
+	PendingCount         int        `json:"pending_count"`
 	StoppedAtExistingRow bool       `json:"stopped_at_existing_row"`
 	LatestImportedAt     *time.Time `json:"latest_imported_at,omitempty"`
 }
@@ -35,7 +39,19 @@ var (
 	googlePayAccountRe         = regexp.MustCompile(`using Bank Account ([A-Z0-9X]+)`)
 )
 
+const googlePayBatchSize = 250
+
+type googlePayBatchSaver interface {
+	SaveTransactions(txns []models.Transaction) error
+}
+
+type GooglePayImportProgress func(summary GooglePayImportSummary)
+
 func ImportGooglePayHTML(r io.Reader, dbClient models.DatabaseClient) (GooglePayImportSummary, error) {
+	return ImportGooglePayHTMLWithProgress(r, dbClient, nil)
+}
+
+func ImportGooglePayHTMLWithProgress(r io.Reader, dbClient models.DatabaseClient, progress GooglePayImportProgress) (GooglePayImportSummary, error) {
 	raw, err := io.ReadAll(r)
 	if err != nil {
 		return GooglePayImportSummary{}, fmt.Errorf("failed to read uploaded file: %w", err)
@@ -51,36 +67,97 @@ func ImportGooglePayHTML(r io.Reader, dbClient models.DatabaseClient) (GooglePay
 	}
 
 	blocks := googlePayOuterCellSplitter.Split(string(raw), -1)
+	summary.TotalBlocks = max(len(blocks)-1, 0)
+
+	pending := make([]models.Transaction, 0, googlePayBatchSize)
+	flushPending := func() error {
+		if len(pending) == 0 {
+			return nil
+		}
+
+		if err := saveGooglePayBatch(dbClient, pending); err != nil {
+			return err
+		}
+
+		summary.ImportedCount += len(pending)
+		summary.BatchCount++
+		summary.PendingCount = 0
+		pending = pending[:0]
+		notifyGooglePayProgress(progress, summary)
+		return nil
+	}
+
 	for _, block := range blocks[1:] {
+		summary.ProcessedCount++
+
 		tx, status, err := parseGooglePayTransactionBlock(block, dbClient)
 		if err != nil {
 			summary.SkippedInvalidCount++
+			notifyGooglePayProgress(progress, summary)
 			continue
 		}
 
 		if !strings.EqualFold(status, "Completed") {
 			summary.SkippedStatusCount++
+			notifyGooglePayProgress(progress, summary)
 			continue
 		}
 
 		if latestStoredAt != nil && !tx.DateTime.After(*latestStoredAt) {
 			summary.SkippedOldCount++
 			summary.StoppedAtExistingRow = true
+			notifyGooglePayProgress(progress, summary)
 			break
 		}
 
-		if err := dbClient.SaveTransaction(*tx); err != nil {
-			return summary, fmt.Errorf("failed to save Google Pay transaction dated %s: %w", tx.DateTime.Format(time.RFC3339), err)
-		}
+		pending = append(pending, *tx)
+		summary.PendingCount = len(pending)
 
-		summary.ImportedCount++
 		if summary.LatestImportedAt == nil || tx.DateTime.After(*summary.LatestImportedAt) {
 			importedAt := tx.DateTime
 			summary.LatestImportedAt = &importedAt
 		}
+
+		if len(pending) >= googlePayBatchSize {
+			if err := flushPending(); err != nil {
+				return summary, fmt.Errorf("failed to save Google Pay transaction batch ending at %s: %w", tx.DateTime.Format(time.RFC3339), err)
+			}
+			continue
+		}
+
+		notifyGooglePayProgress(progress, summary)
 	}
 
+	if err := flushPending(); err != nil {
+		return summary, fmt.Errorf("failed to save final Google Pay transaction batch: %w", err)
+	}
+
+	notifyGooglePayProgress(progress, summary)
 	return summary, nil
+}
+
+func notifyGooglePayProgress(progress GooglePayImportProgress, summary GooglePayImportSummary) {
+	if progress != nil {
+		progress(summary)
+	}
+}
+
+func saveGooglePayBatch(dbClient models.DatabaseClient, txns []models.Transaction) error {
+	if len(txns) == 0 {
+		return nil
+	}
+
+	if saver, ok := dbClient.(googlePayBatchSaver); ok {
+		return saver.SaveTransactions(txns)
+	}
+
+	for _, txn := range txns {
+		if err := dbClient.SaveTransaction(txn); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func parseGooglePayTransactionBlock(block string, dbClient models.DatabaseClient) (*models.Transaction, string, error) {
