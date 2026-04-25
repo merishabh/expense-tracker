@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Expense Tracker</title>
-    <link href="style.css?v=2" rel="stylesheet">
+    <link href="style.css?v=3" rel="stylesheet">
 </head>
 <body>
     <main class="page">
@@ -245,6 +245,21 @@
         </div>
     </div>
 
-    <script src="script.js?v=12"></script>
+    <!-- Chat widget -->
+    <button id="chatFab" type="button" title="Ask Claude">💬</button>
+
+    <div id="chatPanel" style="display:none;">
+        <div id="chatHeader">
+            <span>Ask Claude</span>
+            <button id="chatClose" type="button">✕</button>
+        </div>
+        <div id="chatMessages"></div>
+        <div id="chatInputRow">
+            <input type="text" id="chatInput" placeholder="Ask about your spending…" autocomplete="off">
+            <button id="chatSend" type="button">→</button>
+        </div>
+    </div>
+
+    <script src="script.js?v=13"></script>
 </body>
 </html>

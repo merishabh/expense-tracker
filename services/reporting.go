@@ -232,9 +232,6 @@ func (s *ReportingService) GetLastNDaysTransactions(days int, limit int) ([]mode
 		filtered = filtered[:limit]
 	}
 
-	for _, tx := range filtered {
-		fmt.Printf("Filtered Transaction: %+v\n", tx)
-	}
 	return filtered, nil
 }
 
