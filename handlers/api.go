@@ -510,12 +510,6 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cleanup()
 
-	txs, err := reporting.GetLastNDaysTransactions(30, 500)
-	if err != nil {
-		log.Printf("chat handler: failed to fetch transactions: %v", err)
-		txs = nil
-	}
-
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		http.Error(w, "ANTHROPIC_API_KEY not configured", http.StatusInternalServerError)
@@ -523,7 +517,8 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claudeClient := ai.NewClaudeClient(apiKey)
-	answer, err := claudeClient.Chat(req.Question, req.History, txs)
+	executor := NewToolExecutor(reporting)
+	answer, err := claudeClient.Chat(req.Question, req.History, executor)
 	if err != nil {
 		log.Printf("chat handler: claude error: %v", err)
 		http.Error(w, "failed to get response", http.StatusInternalServerError)
