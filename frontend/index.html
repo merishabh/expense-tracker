@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Expense Tracker</title>
-    <link href="style.css?v=2" rel="stylesheet">
+    <link href="style.css?v=3" rel="stylesheet">
 </head>
 <body>
     <main class="page">
@@ -66,7 +66,7 @@
                     </label>
                     <label class="range-field">
                         <span>Amount (₹)</span>
-                        <input type="number" id="manualAmount" min="0.01" step="0.01" placeholder="0.00">
+                        <input type="number" id="manualAmount" step="0.01" placeholder="0.00">
                     </label>
                     <label class="range-field">
                         <span>Category</span>
@@ -100,7 +100,7 @@
 
         <section class="summary-grid">
             <article class="card metric">
-                <p>Total Expense</p>
+                <p>Net Spend</p>
                 <h2 id="totalAmount">-</h2>
             </article>
             <article class="card metric">
@@ -108,11 +108,11 @@
                 <h2 id="transactionCount">-</h2>
             </article>
             <article class="card metric">
-                <p>Average Ticket</p>
+                <p>Gross Expense</p>
                 <h2 id="averageAmount">-</h2>
             </article>
             <article class="card metric">
-                <p>Need Review</p>
+                <p>Credits</p>
                 <h2 id="uncategorizedCount">-</h2>
             </article>
         </section>
@@ -120,7 +120,7 @@
         <section class="content-grid">
             <article class="card">
                 <div class="section-head">
-                    <h3>Category Wise Spend</h3>
+                    <h3>Category Wise Net Spend</h3>
                 </div>
                 <div id="categoryList" class="stack-list"></div>
             </article>
@@ -136,7 +136,7 @@
         <section class="content-grid single">
             <article class="card">
                 <div class="section-head">
-                    <h3>Last 10 Days Spend Trend</h3>
+                    <h3>Last 10 Days Net Spend Trend</h3>
                 </div>
                 <div id="trendList" class="trend-chart"></div>
             </article>
@@ -211,7 +211,7 @@
                 </label>
                 <label class="range-field">
                     <span>Amount (₹)</span>
-                    <input type="number" id="editAmount" min="0.01" step="0.01">
+                    <input type="number" id="editAmount" step="0.01">
                 </label>
                 <label class="range-field">
                     <span>Category</span>
@@ -245,6 +245,21 @@
         </div>
     </div>
 
-    <script src="script.js?v=12"></script>
+    <!-- Chat widget -->
+    <button id="chatFab" type="button" title="Ask Claude">💬</button>
+
+    <div id="chatPanel" style="display:none;">
+        <div id="chatHeader">
+            <span>Ask Claude</span>
+            <button id="chatClose" type="button">✕</button>
+        </div>
+        <div id="chatMessages"></div>
+        <div id="chatInputRow">
+            <input type="text" id="chatInput" placeholder="Ask about your spending…" autocomplete="off">
+            <button id="chatSend" type="button">→</button>
+        </div>
+    </div>
+
+    <script src="script.js?v=13"></script>
 </body>
 </html>

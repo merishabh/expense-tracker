@@ -272,8 +272,8 @@ async function loadDashboard() {
 
         document.getElementById('totalAmount').textContent = formatCurrency(summary.total_amount);
         document.getElementById('transactionCount').textContent = String(summary.transaction_count || 0);
-        document.getElementById('averageAmount').textContent = formatCurrency(summary.average_amount);
-        document.getElementById('uncategorizedCount').textContent = String(summary.uncategorized_count || 0);
+        document.getElementById('averageAmount').textContent = formatCurrency(summary.gross_expense);
+        document.getElementById('uncategorizedCount').textContent = formatCurrency(summary.credit_amount);
 
         dashboardState.categories = categories.items || [];
         dashboardState.periodTransactions = transactions.transactions || [];
@@ -493,7 +493,7 @@ async function saveEditedTransaction() {
     const result = document.getElementById('editResult');
 
     if (!vendor) { alert('Merchant is required.'); return; }
-    if (!amount || amount <= 0) { alert('Enter a valid amount.'); return; }
+    if (!Number.isFinite(amount) || amount === 0) { alert('Enter a non-zero amount.'); return; }
     if (!date) { alert('Date is required.'); return; }
 
     btn.disabled = true;
@@ -531,7 +531,7 @@ async function addManualTransaction() {
     const result = document.getElementById('manualResult');
 
     if (!vendor) { alert('Please enter a merchant name.'); return; }
-    if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+    if (!Number.isFinite(amount) || amount === 0) { alert('Please enter a non-zero amount.'); return; }
     if (!date) { alert('Please select a date.'); return; }
 
     btn.disabled = true;
@@ -687,4 +687,69 @@ document.addEventListener('DOMContentLoaded', () => {
     if (manualDate) manualDate.value = fmt(today);
 
     loadDashboard();
+    initChat();
 });
+
+// ── Chat widget ──────────────────────────────────────────────────────────────
+
+function initChat() {
+    const fab      = document.getElementById('chatFab');
+    const panel    = document.getElementById('chatPanel');
+    const closeBtn = document.getElementById('chatClose');
+    const input    = document.getElementById('chatInput');
+    const sendBtn  = document.getElementById('chatSend');
+    const messages = document.getElementById('chatMessages');
+
+    let history  = [];
+    let loading  = false;
+
+    fab.addEventListener('click', () => {
+        const open = panel.style.display === 'flex';
+        panel.style.display = open ? 'none' : 'flex';
+        if (!open) input.focus();
+    });
+
+    closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+
+    sendBtn.addEventListener('click', sendMessage);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+
+    async function sendMessage() {
+        const question = input.value.trim();
+        if (!question || loading) return;
+
+        appendMessage('user', question);
+        history.push({ role: 'user', content: question });
+        input.value = '';
+        loading = true;
+        sendBtn.disabled = true;
+
+        const thinkingEl = appendMessage('assistant', '…');
+
+        try {
+            const data = await sendJSON('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question, history: history.slice(0, -1) }),
+            });
+            thinkingEl.textContent = data.answer;
+            history.push({ role: 'assistant', content: data.answer });
+        } catch (err) {
+            thinkingEl.textContent = 'Error: ' + (err.message || 'something went wrong');
+            history.pop();
+        } finally {
+            loading = false;
+            sendBtn.disabled = false;
+            input.focus();
+        }
+    }
+
+    function appendMessage(role, text) {
+        const el = document.createElement('div');
+        el.className = 'chat-msg chat-msg--' + role;
+        el.textContent = text;
+        messages.appendChild(el);
+        messages.scrollTop = messages.scrollHeight;
+        return el;
+    }
+}
