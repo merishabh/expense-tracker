@@ -687,4 +687,69 @@ document.addEventListener('DOMContentLoaded', () => {
     if (manualDate) manualDate.value = fmt(today);
 
     loadDashboard();
+    initChat();
 });
+
+// ── Chat widget ──────────────────────────────────────────────────────────────
+
+function initChat() {
+    const fab      = document.getElementById('chatFab');
+    const panel    = document.getElementById('chatPanel');
+    const closeBtn = document.getElementById('chatClose');
+    const input    = document.getElementById('chatInput');
+    const sendBtn  = document.getElementById('chatSend');
+    const messages = document.getElementById('chatMessages');
+
+    let history  = [];
+    let loading  = false;
+
+    fab.addEventListener('click', () => {
+        const open = panel.style.display === 'flex';
+        panel.style.display = open ? 'none' : 'flex';
+        if (!open) input.focus();
+    });
+
+    closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+
+    sendBtn.addEventListener('click', sendMessage);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+
+    async function sendMessage() {
+        const question = input.value.trim();
+        if (!question || loading) return;
+
+        appendMessage('user', question);
+        history.push({ role: 'user', content: question });
+        input.value = '';
+        loading = true;
+        sendBtn.disabled = true;
+
+        const thinkingEl = appendMessage('assistant', '…');
+
+        try {
+            const data = await sendJSON('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question, history: history.slice(0, -1) }),
+            });
+            thinkingEl.textContent = data.answer;
+            history.push({ role: 'assistant', content: data.answer });
+        } catch (err) {
+            thinkingEl.textContent = 'Error: ' + (err.message || 'something went wrong');
+            history.pop();
+        } finally {
+            loading = false;
+            sendBtn.disabled = false;
+            input.focus();
+        }
+    }
+
+    function appendMessage(role, text) {
+        const el = document.createElement('div');
+        el.className = 'chat-msg chat-msg--' + role;
+        el.textContent = text;
+        messages.appendChild(el);
+        messages.scrollTop = messages.scrollHeight;
+        return el;
+    }
+}
