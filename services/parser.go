@@ -216,6 +216,36 @@ func ParseIMPSPaymentTransaction(text string, dbClient models.DatabaseClient) *m
 	return nil
 }
 
+func ParseRBLCreditCardTransaction(text string, dbClient models.DatabaseClient) *models.Transaction {
+	re := regexp.MustCompile(`INR([\d,\.]+)\s+spent\s+at\s+(.+?)\s+on\s+RBL\s+Bank\s+credit\s+card\s+\((\d+)\)\s+on\s+(\d{2}-\d{2}-\d{4})`)
+	match := re.FindStringSubmatch(text)
+	if len(match) != 5 {
+		return nil
+	}
+
+	amount, err := strconv.ParseFloat(strings.ReplaceAll(match[1], ",", ""), 64)
+	if err != nil {
+		log.Printf("Error parsing RBL amount: %v", err)
+		return nil
+	}
+
+	dt, err := time.Parse("02-01-2006", match[4])
+	if err != nil {
+		log.Printf("Error parsing RBL date: %v", err)
+		return nil
+	}
+
+	vendor := strings.TrimSpace(match[2])
+	return &models.Transaction{
+		Type:       "RBLCreditCard",
+		CardEnding: match[3],
+		Amount:     amount,
+		Vendor:     vendor,
+		DateTime:   dt,
+		Category:   CategorizeTransaction(vendor, dbClient),
+	}
+}
+
 // CategorizeTransaction determines the category based on vendor name
 // Uses manual mapping first, then stored manual mappings, and falls back to Other.
 func CategorizeTransaction(vendor string, dbClient models.DatabaseClient) string {

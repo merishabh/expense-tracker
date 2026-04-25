@@ -244,6 +244,9 @@ func parseGooglePayBodyLines(lines []string, dbClient models.DatabaseClient) (*m
 			tx.Vendor = "Google Pay"
 		}
 	case strings.HasPrefix(description, "Received "):
+		tx.Amount = -tx.Amount
+		tx.DebitedAccount = ""
+		tx.CreditedAccount = "Google Pay"
 		tx.Vendor = afterGooglePayToken(description, " from ")
 		if tx.Vendor == "" {
 			tx.Vendor = "Google Pay"

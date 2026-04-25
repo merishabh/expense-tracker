@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/yourusername/expense-tracker/ai"
 	"github.com/yourusername/expense-tracker/models"
 	"github.com/yourusername/expense-tracker/services"
 )
@@ -103,10 +104,6 @@ func lastTenDaysTransactionsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
-	}
-
-	for i := range transactions {
-		fmt.Println(transactions[i])
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"transactions": transactions})
@@ -237,8 +234,8 @@ func updateTransactionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	if body.Vendor == "" || body.Amount <= 0 {
-		http.Error(w, "vendor and amount are required", http.StatusBadRequest)
+	if body.Vendor == "" || body.Amount == 0 {
+		http.Error(w, "vendor and non-zero amount are required", http.StatusBadRequest)
 		return
 	}
 
@@ -293,8 +290,8 @@ func addManualTransactionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
-	if body.Vendor == "" || body.Amount <= 0 {
-		http.Error(w, "vendor and amount are required", http.StatusBadRequest)
+	if body.Vendor == "" || body.Amount == 0 {
+		http.Error(w, "vendor and non-zero amount are required", http.StatusBadRequest)
 		return
 	}
 
@@ -479,6 +476,7 @@ func StartAPIServer() {
 	http.HandleFunc("/api/summary/trend", apiAuthMiddleware(trendSummaryHandler))
 	http.HandleFunc("/api/summary/trend/last-10-days", apiAuthMiddleware(lastTenDaysTrendHandler))
 	http.HandleFunc("/api/summary/monthly-comparison", apiAuthMiddleware(monthlyComparisonHandler))
+	http.HandleFunc("/api/chat", apiAuthMiddleware(chatHandler))
 
 	// Protected frontend
 	http.HandleFunc("/", webAuthMiddleware(serveStaticFiles))
@@ -489,6 +487,50 @@ func StartAPIServer() {
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
+}
+
+func chatHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Question string           `json:"question"`
+		History  []ai.ChatMessage `json:"history"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Question == "" {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	reporting, cleanup, ok := newReportingService(w)
+	if !ok {
+		return
+	}
+	defer cleanup()
+
+	txs, err := reporting.GetLastNDaysTransactions(30, 500)
+	if err != nil {
+		log.Printf("chat handler: failed to fetch transactions: %v", err)
+		txs = nil
+	}
+
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		http.Error(w, "ANTHROPIC_API_KEY not configured", http.StatusInternalServerError)
+		return
+	}
+
+	claudeClient := ai.NewClaudeClient(apiKey)
+	answer, err := claudeClient.Chat(req.Question, req.History, txs)
+	if err != nil {
+		log.Printf("chat handler: claude error: %v", err)
+		http.Error(w, "failed to get response", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"answer": answer})
 }
 
 func newReportingService(w http.ResponseWriter) (*services.ReportingService, func(), bool) {

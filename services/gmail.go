@@ -53,7 +53,7 @@ func getMessageBody(payload *gmail.MessagePart) string {
 func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClient) (EmailSyncStats, error) {
 	stats := EmailSyncStats{}
 	pageToken := ""
-	query := "((from:alerts@hdfcbank.net OR from:alerts@hdfcbank.bank.in) OR (from:credit_cards@icicibank.com OR from:credit_cards@icici.bank.in)) newer_than:1d"
+	query := "((from:alerts@hdfcbank.net OR from:alerts@hdfcbank.bank.in) OR (from:credit_cards@icicibank.com OR from:credit_cards@icici.bank.in) OR (from:RBLAlerts@rbl.bank.in)) newer_than:1d"
 
 	log.Printf("gmail sync started user=%s query=%q", user, query)
 	for {
@@ -94,6 +94,8 @@ func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClie
 			if tx = ParseCreditCardTransaction(cleanBody, dbClient); tx != nil {
 				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)
 			} else if tx = ParseICICICreditCardTransaction(cleanBody, dbClient); tx != nil {
+				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)
+			} else if tx = ParseRBLCreditCardTransaction(cleanBody, dbClient); tx != nil {
 				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)
 			} else if tx = ParseBankTransaction(cleanBody, dbClient); tx != nil {
 				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)

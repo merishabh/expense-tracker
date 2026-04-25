@@ -139,6 +139,47 @@ func TestImportGooglePayHTMLCategorizesRecognizedMerchants(t *testing.T) {
 	}
 }
 
+func TestImportGooglePayHTMLMarksReceivedTransactionsAsCredits(t *testing.T) {
+	db := &googlePayTestDB{}
+
+	html := `
+<html><body>
+<div class="outer-cell mdl-cell mdl-cell--12-col mdl-shadow--2dp"><div class="mdl-grid">
+<div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">Received ₹80,000.00 from Rishabh<br>Feb 16, 2026, 9:57:40 PM GMT+05:30<br></div>
+<div class="content-cell mdl-cell mdl-cell--12-col mdl-typography--caption"><b>Details:</b><br>&emsp;abc123<br>&emsp;Completed<br></div>
+</div></div>
+</body></html>`
+
+	summary, err := ImportGooglePayHTML(strings.NewReader(html), db)
+	if err != nil {
+		t.Fatalf("ImportGooglePayHTML returned error: %v", err)
+	}
+
+	if summary.ImportedCount != 1 {
+		t.Fatalf("expected 1 imported transaction, got %d", summary.ImportedCount)
+	}
+
+	if len(db.saved) != 1 {
+		t.Fatalf("expected 1 saved transaction, got %d", len(db.saved))
+	}
+
+	if db.saved[0].CreditedAccount != "Google Pay" {
+		t.Fatalf("expected credited account to be Google Pay, got %q", db.saved[0].CreditedAccount)
+	}
+
+	if db.saved[0].DebitedAccount != "" {
+		t.Fatalf("expected debited account to be empty, got %q", db.saved[0].DebitedAccount)
+	}
+
+	if db.saved[0].Amount != -80000 {
+		t.Fatalf("expected amount -80000, got %v", db.saved[0].Amount)
+	}
+
+	if !db.saved[0].IsCredit() {
+		t.Fatalf("expected received transaction to be treated as credit")
+	}
+}
+
 func TestImportGooglePayHTMLBatchesWritesAndReportsProgress(t *testing.T) {
 	db := &googlePayTestDB{}
 
