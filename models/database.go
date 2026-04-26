@@ -15,6 +15,8 @@ type DatabaseClient interface {
 	SaveUnparsedEmail(body string, headers map[string]string) error
 	GetCategoryMapping(vendor string) (*CategoryMapping, error)
 	SaveCategoryMapping(mapping *CategoryMapping) error
+	SaveMemory(mem Memory) error
+	GetAllMemories() ([]Memory, error)
 	Close() error
 }
 

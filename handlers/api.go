@@ -516,9 +516,19 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	memDB, err := models.NewDatabaseClient()
+	if err != nil {
+		log.Printf("chat handler: memory db error: %v", err)
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return
+	}
+	defer memDB.Close()
+	memorySvc := services.NewMemoryService(memDB)
+	memories := memorySvc.LoadMemories()
+
 	claudeClient := ai.NewClaudeClient(apiKey)
-	executor := NewToolExecutor(reporting)
-	answer, err := claudeClient.Chat(req.Question, req.History, executor)
+	executor := NewToolExecutor(reporting, memorySvc)
+	answer, err := claudeClient.Chat(req.Question, req.History, memories, executor)
 	if err != nil {
 		log.Printf("chat handler: claude error: %v", err)
 		http.Error(w, "failed to get response", http.StatusInternalServerError)

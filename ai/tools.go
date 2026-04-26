@@ -91,10 +91,29 @@ var toolSchemas = func() []anthropic.ToolUnionParam {
 		},
 	}
 
+	saveMemory := anthropic.ToolParam{
+		Name:        "save_memory",
+		Description: anthropic.String("Persist something worth remembering about the user across conversations: a goal, a correction, a life-context fact, a spending pattern, or an analytical preference. Call this proactively when the user reveals information that should influence future responses."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]interface{}{
+				"type": map[string]string{
+					"type":        "string",
+					"description": "Memory category: life_context | goal | correction | pattern | preference",
+				},
+				"content": map[string]string{
+					"type":        "string",
+					"description": "The memory to save, written as a short fact in third person, e.g. 'User wants to cut food spend to ₹5000/month'",
+				},
+			},
+			Required: []string{"type", "content"},
+		},
+	}
+
 	return []anthropic.ToolUnionParam{
 		{OfTool: &categorySpend},
 		{OfTool: &monthlySum},
 		{OfTool: &topMerchants},
 		{OfTool: &getTransactions},
+		{OfTool: &saveMemory},
 	}
 }()
