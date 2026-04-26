@@ -20,6 +20,8 @@ func NewToolExecutor(reporting *services.ReportingService) ai.ToolExecutor {
 			return executeMonthlySum(reporting, input)
 		case "get_top_merchants":
 			return executeTopMerchants(reporting, input)
+		case "get_transactions":
+			return executeGetTransactions(reporting, input)
 		default:
 			return "", fmt.Errorf("unknown tool: %s", name)
 		}
@@ -149,6 +151,39 @@ func executeTopMerchants(r *services.ReportingService, input map[string]any) (st
 		fmt.Fprintf(&sb, "  %d. %s: ₹%.2f (%d txns)\n", i+1, v.k, v.v, counts[v.k])
 	}
 
+	return sb.String(), nil
+}
+
+func executeGetTransactions(r *services.ReportingService, input map[string]any) (string, error) {
+	category, _ := input["category"].(string)
+	from, to, err := parseDateRange(input)
+	if err != nil {
+		return "", err
+	}
+
+	txs, err := r.ListTransactionsByDateRange(from, to, category, 1000)
+	if err != nil {
+		return "", err
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Transactions (%s to %s", input["from_date"], input["to_date"])
+	if category != "" {
+		fmt.Fprintf(&sb, ", category: %s", category)
+	}
+	fmt.Fprintf(&sb, "):\n")
+
+	for _, tx := range txs {
+		if tx.IsCredit() {
+			continue
+		}
+		fmt.Fprintf(&sb, "  %s | %s | %s | ₹%.2f\n",
+			tx.DateTime.Format("2006-01-02 15:04 Mon"),
+			tx.Category,
+			tx.Vendor,
+			tx.Amount,
+		)
+	}
 	return sb.String(), nil
 }
 

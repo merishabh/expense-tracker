@@ -69,9 +69,32 @@ var toolSchemas = func() []anthropic.ToolUnionParam {
 		},
 	}
 
+	getTransactions := anthropic.ToolParam{
+		Name:        "get_transactions",
+		Description: anthropic.String("Fetch individual transactions with full detail (datetime, vendor, amount, category). Use this when the question requires analysis that aggregated tools can't answer — e.g. time of day, day of week, weekend vs weekday, streaks, or any pattern over raw rows."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]interface{}{
+				"category": map[string]string{
+					"type":        "string",
+					"description": "Filter by category, e.g. Food, Travel, Grocery. Leave empty for all categories.",
+				},
+				"from_date": map[string]string{
+					"type":        "string",
+					"description": "Start date in YYYY-MM-DD format (inclusive)",
+				},
+				"to_date": map[string]string{
+					"type":        "string",
+					"description": "End date in YYYY-MM-DD format (inclusive)",
+				},
+			},
+			Required: []string{"from_date", "to_date"},
+		},
+	}
+
 	return []anthropic.ToolUnionParam{
 		{OfTool: &categorySpend},
 		{OfTool: &monthlySum},
 		{OfTool: &topMerchants},
+		{OfTool: &getTransactions},
 	}
 }()

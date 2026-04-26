@@ -180,6 +180,36 @@ func TestImportGooglePayHTMLMarksReceivedTransactionsAsCredits(t *testing.T) {
 	}
 }
 
+func TestImportGooglePayHTMLAcceptsISTTimestampFormat(t *testing.T) {
+	db := &googlePayTestDB{}
+
+	html := `
+<html><body>
+<div class="outer-cell mdl-cell mdl-cell--12-col mdl-shadow--2dp"><div class="mdl-grid">
+<div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">Paid ₹1,100.00 to RAMESHWARAM ENTERPRISES using Bank Account XXXXXXXX0000<br>Apr 19, 2026, 8:31:30 AM IST<br></div>
+<div class="content-cell mdl-cell mdl-cell--12-col mdl-typography--caption"><b>Details:</b><br>&emsp;abc123<br>&emsp;Completed<br></div>
+</div></div>
+</body></html>`
+
+	summary, err := ImportGooglePayHTML(strings.NewReader(html), db)
+	if err != nil {
+		t.Fatalf("ImportGooglePayHTML returned error: %v", err)
+	}
+
+	if summary.ImportedCount != 1 {
+		t.Fatalf("expected 1 imported transaction, got %d", summary.ImportedCount)
+	}
+
+	if len(db.saved) != 1 {
+		t.Fatalf("expected 1 saved transaction, got %d", len(db.saved))
+	}
+
+	want := time.Date(2026, 4, 19, 3, 1, 30, 0, time.UTC)
+	if !db.saved[0].DateTime.Equal(want) {
+		t.Fatalf("expected parsed UTC timestamp %s, got %s", want.Format(time.RFC3339), db.saved[0].DateTime.Format(time.RFC3339))
+	}
+}
+
 func TestImportGooglePayHTMLBatchesWritesAndReportsProgress(t *testing.T) {
 	db := &googlePayTestDB{}
 
