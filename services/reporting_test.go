@@ -28,6 +28,8 @@ func (d *reportingTestDB) GetCategoryMapping(vendor string) (*models.CategoryMap
 	return nil, nil
 }
 func (d *reportingTestDB) SaveCategoryMapping(mapping *models.CategoryMapping) error { return nil }
+func (d *reportingTestDB) SaveMemory(mem models.Memory) error                        { return nil }
+func (d *reportingTestDB) GetAllMemories() ([]models.Memory, error)                  { return nil, nil }
 func (d *reportingTestDB) Close() error                                              { return nil }
 
 func TestGetTotalSummaryDeductsCredits(t *testing.T) {

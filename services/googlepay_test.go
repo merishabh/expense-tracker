@@ -52,6 +52,14 @@ func (d *googlePayTestDB) SaveCategoryMapping(mapping *models.CategoryMapping) e
 	return nil
 }
 
+func (d *googlePayTestDB) SaveMemory(mem models.Memory) error {
+	return nil
+}
+
+func (d *googlePayTestDB) GetAllMemories() ([]models.Memory, error) {
+	return nil, nil
+}
+
 func (d *googlePayTestDB) Close() error {
 	return nil
 }
