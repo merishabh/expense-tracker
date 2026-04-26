@@ -35,18 +35,29 @@ func NewClaudeClient(apiKey string) *ClaudeClient {
 	return &ClaudeClient{client: &c}
 }
 
-func (c *ClaudeClient) Chat(question string, history []ChatMessage, executor ToolExecutor) (string, error) {
-	// Build system prompt with today's date substituted in
+func (c *ClaudeClient) Chat(question string, history []ChatMessage, memories string, executor ToolExecutor) (string, error) {
+	memoryBlock := ""
+	if memories != "" {
+		memoryBlock = "\n\nWhat you know about this user:\n" + memories
+	}
+
 	prompt := fmt.Sprintf(`You are a personal finance assistant. You have tools to query the user's transaction data.
 
-Today: %s
+Today: %s%s
 
 Rules:
 - Always call a tool to fetch real data before answering. Never guess amounts.
 - Use ₹ for all amounts.
 - Be concise. Lead with the numbers, follow with brief insight.
-- If a question spans multiple periods or categories, call the relevant tool for each.`,
-		time.Now().Format("2 Jan 2006"))
+- If a question spans multiple periods or categories, call the relevant tool for each.
+
+Memory rules (call save_memory proactively):
+- User states a financial goal, e.g. "I want to spend less on food"
+- User corrects an assumption you made
+- User reveals life context, e.g. income, job, family situation, city
+- You notice a strong spending pattern worth remembering
+- User expresses a preference for how they want analysis presented`,
+		time.Now().Format("2 Jan 2006"), memoryBlock)
 
 	// Seed messages from conversation history
 	messages := make([]anthropic.MessageParam, 0, len(history)+1)

@@ -186,3 +186,30 @@ func (f *FirestoreClient) SaveCategoryMapping(mapping *CategoryMapping) error {
 	fmt.Printf("Saved category mapping: %s -> %s (%s)\n", mapping.Vendor, mapping.Category, mapping.Source)
 	return nil
 }
+
+func (f *FirestoreClient) SaveMemory(mem Memory) error {
+	_, _, err := f.Client.Collection("chat_memories").Add(f.Ctx, mem)
+	if err != nil {
+		return fmt.Errorf("failed to save memory: %v", err)
+	}
+	return nil
+}
+
+func (f *FirestoreClient) GetAllMemories() ([]Memory, error) {
+	iter := f.Client.Collection("chat_memories").OrderBy("created_at", firestore.Desc).Documents(f.Ctx)
+	var memories []Memory
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch memories: %v", err)
+		}
+		var m Memory
+		if err := doc.DataTo(&m); err == nil {
+			memories = append(memories, m)
+		}
+	}
+	return memories, nil
+}
