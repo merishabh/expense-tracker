@@ -10,8 +10,8 @@ import (
 	"github.com/yourusername/expense-tracker/services"
 )
 
-// NewToolExecutor builds a ToolExecutor backed by the given ReportingService.
-func NewToolExecutor(reporting *services.ReportingService) ai.ToolExecutor {
+// NewToolExecutor builds a ToolExecutor backed by the given ReportingService and MemoryService.
+func NewToolExecutor(reporting *services.ReportingService, memory *services.MemoryService) ai.ToolExecutor {
 	return func(name string, input map[string]any) (string, error) {
 		switch name {
 		case "get_category_spend":
@@ -22,10 +22,24 @@ func NewToolExecutor(reporting *services.ReportingService) ai.ToolExecutor {
 			return executeTopMerchants(reporting, input)
 		case "get_transactions":
 			return executeGetTransactions(reporting, input)
+		case "save_memory":
+			return executeSaveMemory(memory, input)
 		default:
 			return "", fmt.Errorf("unknown tool: %s", name)
 		}
 	}
+}
+
+func executeSaveMemory(m *services.MemoryService, input map[string]any) (string, error) {
+	memType, _ := input["type"].(string)
+	content, _ := input["content"].(string)
+	if content == "" {
+		return "", fmt.Errorf("content is required")
+	}
+	if err := m.SaveMemory(memType, content); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Memory saved: [%s] %s", memType, content), nil
 }
 
 func executeCategorySpend(r *services.ReportingService, input map[string]any) (string, error) {
