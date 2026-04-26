@@ -107,7 +107,7 @@ func ImportGooglePayHTMLWithProgress(r io.Reader, dbClient models.DatabaseClient
 			summary.SkippedOldCount++
 			summary.StoppedAtExistingRow = true
 			notifyGooglePayProgress(progress, summary)
-			break
+			continue
 		}
 
 		pending = append(pending, *tx)
@@ -264,12 +264,21 @@ func parseGooglePayTime(value string) (time.Time, error) {
 	normalized = strings.ReplaceAll(normalized, "\u00a0", " ")
 	normalized = googlePaySpaceRe.ReplaceAllString(strings.TrimSpace(normalized), " ")
 
-	parsed, err := time.Parse("Jan 2, 2006, 3:04:05 PM GMT-07:00", normalized)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid Google Pay timestamp %q: %w", value, err)
+	layouts := []string{
+		"Jan 2, 2006, 3:04:05 PM GMT-07:00",
+		"Jan 2, 2006, 3:04:05 PM MST",
 	}
 
-	return parsed.UTC(), nil
+	var lastErr error
+	for _, layout := range layouts {
+		parsed, err := time.Parse(layout, normalized)
+		if err == nil {
+			return parsed.UTC(), nil
+		}
+		lastErr = err
+	}
+
+	return time.Time{}, fmt.Errorf("invalid Google Pay timestamp %q: %w", value, lastErr)
 }
 
 func extractGooglePayLines(fragment string) []string {
