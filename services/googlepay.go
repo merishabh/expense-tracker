@@ -107,7 +107,7 @@ func ImportGooglePayHTMLWithProgress(r io.Reader, dbClient models.DatabaseClient
 			summary.SkippedOldCount++
 			summary.StoppedAtExistingRow = true
 			notifyGooglePayProgress(progress, summary)
-			continue
+			break
 		}
 
 		pending = append(pending, *tx)

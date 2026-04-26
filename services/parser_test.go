@@ -24,6 +24,8 @@ func (d *parserTestDB) GetCategoryMapping(vendor string) (*models.CategoryMappin
 	return nil, nil
 }
 func (d *parserTestDB) SaveCategoryMapping(mapping *models.CategoryMapping) error { return nil }
+func (d *parserTestDB) SaveMemory(mem models.Memory) error                        { return nil }
+func (d *parserTestDB) GetAllMemories() ([]models.Memory, error)                  { return nil, nil }
 func (d *parserTestDB) Close() error                                              { return nil }
 
 func TestParseICICICreditCardTransaction_AmazonPayAlert(t *testing.T) {
