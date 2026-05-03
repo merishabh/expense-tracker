@@ -64,7 +64,8 @@ func (d *googlePayTestDB) DeleteTransaction(id string) error { return nil }
 func (d *googlePayTestDB) Close() error                      { return nil }
 
 func TestImportGooglePayHTMLStopsAtLatestStoredTransaction(t *testing.T) {
-	latestStored := time.Date(2026, 4, 17, 2, 14, 1, 0, time.UTC)
+	// Wall-clock time of the Apr 17 transaction (7:44:01 AM IST stored as-is).
+	latestStored := time.Date(2026, 4, 17, 7, 44, 1, 0, time.UTC)
 	db := &googlePayTestDB{latest: &latestStored}
 
 	html := `
@@ -211,9 +212,10 @@ func TestImportGooglePayHTMLAcceptsISTTimestampFormat(t *testing.T) {
 		t.Fatalf("expected 1 saved transaction, got %d", len(db.saved))
 	}
 
-	want := time.Date(2026, 4, 19, 3, 1, 30, 0, time.UTC)
+	// Wall-clock time from Google Pay (8:31:30 AM IST) stored as-is, no conversion.
+	want := time.Date(2026, 4, 19, 8, 31, 30, 0, time.UTC)
 	if !db.saved[0].DateTime.Equal(want) {
-		t.Fatalf("expected parsed UTC timestamp %s, got %s", want.Format(time.RFC3339), db.saved[0].DateTime.Format(time.RFC3339))
+		t.Fatalf("expected wall-clock timestamp %s, got %s", want.Format(time.RFC3339), db.saved[0].DateTime.Format(time.RFC3339))
 	}
 }
 

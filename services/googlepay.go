@@ -259,38 +259,22 @@ func parseGooglePayBodyLines(lines []string, dbClient models.DatabaseClient) (*m
 	return tx, nil
 }
 
-var istLocation = time.FixedZone("IST", 5*60*60+30*60)
+// googlePayTZSuffixRe strips trailing timezone info (e.g. "IST", "GMT+05:30").
+var googlePayTZSuffixRe = regexp.MustCompile(`\s+(GMT[+-]\d{2}:\d{2}|[A-Z]{2,5})$`)
 
 func parseGooglePayTime(value string) (time.Time, error) {
 	normalized := strings.ReplaceAll(value, "\u202f", " ")
 	normalized = strings.ReplaceAll(normalized, "\u00a0", " ")
 	normalized = googlePaySpaceRe.ReplaceAllString(strings.TrimSpace(normalized), " ")
 
-	// Resolve "IST" to an explicit offset \u2014 minimal containers (e.g. Cloud Run)
-	// have no timezone database so time.Parse treats IST as UTC+0 otherwise.
-	if strings.HasSuffix(normalized, " IST") {
-		normalized = normalized[:len(normalized)-3] + "GMT+05:30"
-	}
+	// Strip timezone suffix \u2014 store the wall-clock time exactly as shown in Google Pay.
+	normalized = googlePayTZSuffixRe.ReplaceAllString(normalized, "")
 
-	layouts := []string{
-		"Jan 2, 2006, 3:04:05 PM GMT-07:00",
-		"Jan 2, 2006, 3:04:05 PM MST",
+	parsed, err := time.Parse("Jan 2, 2006, 3:04:05 PM", normalized)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid Google Pay timestamp %q: %w", value, err)
 	}
-
-	var lastErr error
-	for _, layout := range layouts {
-		parsed, err := time.Parse(layout, normalized)
-		if err == nil {
-			// Store the IST wall-clock time so the UI can display it directly
-			// without browser timezone conversion (all times are treated as IST).
-			ist := parsed.In(istLocation)
-			return time.Date(ist.Year(), ist.Month(), ist.Day(),
-				ist.Hour(), ist.Minute(), ist.Second(), 0, time.UTC), nil
-		}
-		lastErr = err
-	}
-
-	return time.Time{}, fmt.Errorf("invalid Google Pay timestamp %q: %w", value, lastErr)
+	return parsed, nil
 }
 
 func extractGooglePayLines(fragment string) []string {
