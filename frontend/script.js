@@ -267,7 +267,7 @@ async function loadDashboard() {
             fetchJSON(`/api/summary/total?period=${period}`),
             fetchJSON(`/api/summary/category?period=${period}`),
             fetchJSON('/api/summary/trend/last-10-days'),
-            fetchJSON(`/api/transactions?period=${period}&limit=500`),
+            fetchJSON(`/api/transactions?period=${period}`),
             fetchJSON('/api/summary/monthly-comparison'),
             fetchJSON('/api/transactions/last-10-days')
         ]);
@@ -595,7 +595,7 @@ async function searchByRange() {
     btn.textContent = 'Loading…';
 
     try {
-        let url = `/api/transactions/range?from=${from}&to=${to}&limit=500`;
+        let url = `/api/transactions/range?from=${from}&to=${to}`;
         if (category) url += `&category=${encodeURIComponent(category)}`;
 
         const data = await fetchJSON(url);
