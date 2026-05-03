@@ -110,6 +110,14 @@ func (f *FirestoreClient) UpdateTransaction(id string, tx Transaction) error {
 	return nil
 }
 
+func (f *FirestoreClient) DeleteTransaction(id string) error {
+	_, err := f.Client.Collection("transactions").Doc(id).Delete(f.Ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete transaction: %v", err)
+	}
+	return nil
+}
+
 func (f *FirestoreClient) GetLatestTransactionTimeByType(txType string) (*time.Time, error) {
 	iter := f.Client.Collection("transactions").Documents(f.Ctx)
 	defer iter.Stop()

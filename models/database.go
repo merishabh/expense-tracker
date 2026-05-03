@@ -10,6 +10,7 @@ import (
 type DatabaseClient interface {
 	SaveTransaction(txn Transaction) error
 	UpdateTransaction(id string, txn Transaction) error
+	DeleteTransaction(id string) error
 	FetchAllTransactions() ([]Transaction, error)
 	GetLatestTransactionTimeByType(txType string) (*time.Time, error)
 	SaveUnparsedEmail(body string, headers map[string]string) error
