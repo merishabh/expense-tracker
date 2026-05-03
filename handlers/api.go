@@ -261,7 +261,6 @@ func updateTransactionHandler(w http.ResponseWriter, r *http.Request) {
 		Vendor   string  `json:"vendor"`
 		Amount   float64 `json:"amount"`
 		Category string  `json:"category"`
-		DateTime string  `json:"date_time"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -276,21 +275,11 @@ func updateTransactionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dt, err := time.Parse("2006-01-02T15:04", body.DateTime)
-	if err != nil {
-		dt, err = time.Parse("2006-01-02", body.DateTime)
-		if err != nil {
-			http.Error(w, "invalid date_time format, expected YYYY-MM-DD", http.StatusBadRequest)
-			return
-		}
-	}
-
 	tx := models.Transaction{
 		Type:     body.Type,
 		Vendor:   body.Vendor,
 		Amount:   body.Amount,
 		Category: body.Category,
-		DateTime: dt,
 	}
 
 	dbClient, err := models.NewDatabaseClient()

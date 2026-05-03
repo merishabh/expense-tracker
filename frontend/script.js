@@ -472,7 +472,6 @@ function openEditModal(tx) {
     document.getElementById('editVendor').value = tx.vendor || '';
     document.getElementById('editAmount').value = tx.amount || '';
     document.getElementById('editCategory').value = tx.category || '';
-    document.getElementById('editDate').value = tx.date_time ? tx.date_time.slice(0, 10) : '';
     document.getElementById('editResult').style.display = 'none';
     const modal = document.getElementById('editModal');
     modal.style.display = 'flex';
@@ -502,13 +501,11 @@ async function saveEditedTransaction() {
     const category = rawCategory === '__new__'
         ? document.getElementById('editCategoryNew')?.value.trim()
         : rawCategory;
-    const date = document.getElementById('editDate').value;
     const btn = document.getElementById('editSave');
     const result = document.getElementById('editResult');
 
     if (!vendor) { alert('Merchant is required.'); return; }
     if (!Number.isFinite(amount) || amount === 0) { alert('Enter a non-zero amount.'); return; }
-    if (!date) { alert('Date is required.'); return; }
 
     btn.disabled = true;
     btn.textContent = 'Saving…';
@@ -517,7 +514,7 @@ async function saveEditedTransaction() {
         await sendJSON('/api/transactions/update', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, type, vendor, amount, category, date_time: date })
+            body: JSON.stringify({ id, type, vendor, amount, category })
         });
         result.style.display = 'block';
         result.innerHTML = `<p class="empty" style="color:#16a34a">Saved successfully.</p>`;
