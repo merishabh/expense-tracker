@@ -212,6 +212,43 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func migrateFieldNamesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	dbClient, err := models.NewDatabaseClient()
+	if err != nil {
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return
+	}
+	defer dbClient.Close()
+
+	type migrator interface {
+		MigrateFieldNames() (int, int, error)
+	}
+	m, ok := dbClient.(migrator)
+	if !ok {
+		http.Error(w, "migration not supported for this database backend", http.StatusNotImplemented)
+		return
+	}
+
+	migrated, skipped, err := m.MigrateFieldNames()
+	if err != nil {
+		log.Printf("field name migration failed migrated=%d skipped=%d err=%v", migrated, skipped, err)
+		http.Error(w, fmt.Sprintf("migration failed after %d documents: %v", migrated, err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("field name migration complete migrated=%d skipped=%d", migrated, skipped)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":   "ok",
+		"migrated": migrated,
+		"skipped":  skipped,
+	})
+}
+
 func updateTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		http.Error(w, "Only PUT method allowed", http.StatusMethodNotAllowed)
@@ -486,6 +523,9 @@ func StartAPIServer() {
 
 	// Public health check
 	http.HandleFunc("/api/health", healthHandler)
+
+	// One-time admin migrations (auth protected)
+	http.HandleFunc("/api/admin/migrate-field-names", apiAuthMiddleware(migrateFieldNamesHandler))
 
 	// Protected API routes
 	http.HandleFunc("/api/jobs/sync-hdfc", syncHDFCHandler)

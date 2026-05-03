@@ -169,6 +169,83 @@ func (f *FirestoreClient) Close() error {
 	return f.Client.Close()
 }
 
+// MigrateFieldNames rewrites old Firestore documents that used Go struct field names
+// (e.g. "DateTime") to the lowercase tag names (e.g. "datetime"). This is a one-time
+// migration needed because firestore struct tags were added after initial data was written.
+func (f *FirestoreClient) MigrateFieldNames() (int, int, error) {
+	// mapping from old Pascal-case Firestore field name → new lowercase tag name
+	rename := map[string]string{
+		"Type":            "type",
+		"CardEnding":      "cardending",
+		"DebitedAccount":  "debitedaccount",
+		"CreditedAccount": "creditedaccount",
+		"Amount":          "amount",
+		"Vendor":          "vendor",
+		"DateTime":        "datetime",
+		"Category":        "category",
+	}
+
+	iter := f.Client.Collection("transactions").Documents(f.Ctx)
+	defer iter.Stop()
+
+	migrated, skipped := 0, 0
+	batch := f.Client.Batch()
+	batchSize := 0
+
+	flush := func() error {
+		if batchSize == 0 {
+			return nil
+		}
+		if _, err := batch.Commit(f.Ctx); err != nil {
+			return fmt.Errorf("batch commit failed: %v", err)
+		}
+		batch = f.Client.Batch()
+		batchSize = 0
+		return nil
+	}
+
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return migrated, skipped, fmt.Errorf("failed to iterate transactions: %v", err)
+		}
+
+		raw := doc.Data()
+		if _, hasOld := raw["DateTime"]; !hasOld {
+			skipped++
+			continue
+		}
+
+		newData := make(map[string]interface{}, len(raw))
+		for k, v := range raw {
+			if newKey, ok := rename[k]; ok {
+				newData[newKey] = v
+			} else {
+				newData[k] = v
+			}
+		}
+
+		batch.Set(doc.Ref, newData)
+		batchSize++
+		migrated++
+
+		if batchSize >= 400 {
+			if err := flush(); err != nil {
+				return migrated, skipped, err
+			}
+		}
+	}
+
+	if err := flush(); err != nil {
+		return migrated, skipped, err
+	}
+
+	return migrated, skipped, nil
+}
+
 // GetCategoryMapping retrieves a vendor-to-category mapping from Firestore
 func (f *FirestoreClient) GetCategoryMapping(vendor string) (*CategoryMapping, error) {
 	vendor = strings.ToLower(vendor)
