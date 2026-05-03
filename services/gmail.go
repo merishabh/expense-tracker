@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/yourusername/expense-tracker/models"
 	"github.com/yourusername/expense-tracker/utils"
@@ -89,15 +90,17 @@ func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClie
 			}
 			cleanBody := utils.StripHTMLTags(body)
 
+			receivedAt := time.UnixMilli(m.InternalDate)
+
 			var tx *models.Transaction
 
-			if tx = ParseCreditCardTransaction(cleanBody, dbClient); tx != nil {
+			if tx = ParseCreditCardTransaction(cleanBody, receivedAt, dbClient); tx != nil {
 				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)
-			} else if tx = ParseICICICreditCardTransaction(cleanBody, dbClient); tx != nil {
+			} else if tx = ParseICICICreditCardTransaction(cleanBody, receivedAt, dbClient); tx != nil {
 				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)
-			} else if tx = ParseRBLCreditCardTransaction(cleanBody, dbClient); tx != nil {
+			} else if tx = ParseRBLCreditCardTransaction(cleanBody, receivedAt, dbClient); tx != nil {
 				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)
-			} else if tx = ParseBankTransaction(cleanBody, dbClient); tx != nil {
+			} else if tx = ParseBankTransaction(cleanBody, receivedAt, dbClient); tx != nil {
 				log.Printf("gmail sync parsed message_id=%s from=%q subject=%q type=%s vendor=%q amount=%.2f", msg.Id, from, subject, tx.Type, tx.Vendor, tx.Amount)
 			} else {
 				log.Printf("gmail sync unparsed message_id=%s from=%q subject=%q", msg.Id, from, subject)

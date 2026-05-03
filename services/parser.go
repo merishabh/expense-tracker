@@ -11,7 +11,7 @@ import (
 	"github.com/yourusername/expense-tracker/models"
 )
 
-func ParseCreditCardTransaction(text string, dbClient models.DatabaseClient) *models.Transaction {
+func ParseCreditCardTransaction(text string, receivedAt time.Time, dbClient models.DatabaseClient) *models.Transaction {
 	// Try HDFC format: "Rs. 3241.00 has been debited from your HDFC Bank Credit Card ending 4207 towards WWW MYNTRA COM on 20 Apr, 2026 at 10:20:18."
 	re := regexp.MustCompile(`Rs\.?\s*([\d,\.]+)\s+has\s+been\s+debited\s+from\s+your\s+HDFC\s+Bank\s+Credit\s+Card\s+ending\s+(\d+)\s+towards\s+(.+?)\s+on\s+(\d{1,2}\s+[A-Za-z]{3},\s+\d{4})\s+at\s+(\d{2}:\d{2}:\d{2})`)
 	match := re.FindStringSubmatch(text)
@@ -21,19 +21,13 @@ func ParseCreditCardTransaction(text string, dbClient models.DatabaseClient) *mo
 			log.Printf("Error parsing amount: %v", err)
 			return nil
 		}
-		datetimeStr := match[4] + " " + match[5]
-		dt, err := time.Parse("2 Jan, 2006 15:04:05", datetimeStr)
-		if err != nil {
-			log.Printf("Error parsing date: %v", err)
-			return nil
-		}
 		vendor := strings.TrimSpace(match[3])
 		return &models.Transaction{
 			Type:       "HDFCCreditCard",
 			CardEnding: match[2],
 			Amount:     amount,
 			Vendor:     vendor,
-			DateTime:   dt,
+			DateTime:   receivedAt,
 			Category:   CategorizeTransaction(vendor, dbClient),
 		}
 	}
@@ -47,20 +41,13 @@ func ParseCreditCardTransaction(text string, dbClient models.DatabaseClient) *mo
 			log.Printf("Error parsing amount: %v", err)
 			return nil
 		}
-		// Parse date format: "09 Jan, 2026 at 16:28:26"
-		datetimeStr := match[4] + " " + match[5]
-		dt, err := time.Parse("2 Jan, 2006 15:04:05", datetimeStr)
-		if err != nil {
-			log.Printf("Error parsing date: %v", err)
-			return nil
-		}
 		vendor := strings.TrimSpace(match[3])
 		return &models.Transaction{
 			Type:       "HDFCCreditCard",
 			CardEnding: match[2],
 			Amount:     amount,
 			Vendor:     vendor,
-			DateTime:   dt,
+			DateTime:   receivedAt,
 			Category:   CategorizeTransaction(vendor, dbClient),
 		}
 	}
@@ -74,25 +61,20 @@ func ParseCreditCardTransaction(text string, dbClient models.DatabaseClient) *mo
 			log.Printf("Error parsing amount: %v", err)
 			return nil
 		}
-		dt, err := time.Parse("02-01-2006 15:04:05", match[4])
-		if err != nil {
-			log.Printf("Error parsing date: %v", err)
-			return nil
-		}
 		vendor := strings.TrimSpace(match[3])
 		return &models.Transaction{
 			Type:       "HDFCCreditCard",
 			CardEnding: match[1],
 			Amount:     amount,
 			Vendor:     vendor,
-			DateTime:   dt,
+			DateTime:   receivedAt,
 			Category:   CategorizeTransaction(vendor, dbClient),
 		}
 	}
 	return nil
 }
 
-func ParseBankTransaction(text string, dbClient models.DatabaseClient) *models.Transaction {
+func ParseBankTransaction(text string, receivedAt time.Time, dbClient models.DatabaseClient) *models.Transaction {
 	re := regexp.MustCompile(`Your A/c (\w+) is debited for INR ([\d,\.]+) on (\d{2}-\d{2}-\d{2}) and A/c (\w+) is credited`)
 	match := re.FindStringSubmatch(text)
 	if len(match) == 5 {
@@ -101,25 +83,18 @@ func ParseBankTransaction(text string, dbClient models.DatabaseClient) *models.T
 			log.Printf("Error parsing amount: %v", err)
 			return nil
 		}
-		// Parse date (assuming format is DD-MM-YY)
-		dateStr := match[3]
-		dt, err := time.Parse("02-01-06", dateStr)
-		if err != nil {
-			log.Printf("Error parsing date: %v", err)
-			return nil
-		}
 		return &models.Transaction{
 			Type:            "BankTransfer",
 			DebitedAccount:  match[1],
 			CreditedAccount: match[4],
 			Amount:          amount,
-			DateTime:        dt,
+			DateTime:        receivedAt,
 		}
 	}
 	return nil
 }
 
-func ParseICICICreditCardTransaction(text string, dbClient models.DatabaseClient) *models.Transaction {
+func ParseICICICreditCardTransaction(text string, receivedAt time.Time, dbClient models.DatabaseClient) *models.Transaction {
 	patterns := []*regexp.Regexp{
 		regexp.MustCompile(`ICICI Bank Credit Card (\w+) has been used for a transaction of INR ([\d,\.]+) on ([A-Za-z]+ \d{1,2}, \d{4}) at (\d{2}:\d{2}:\d{2})\. Info: (.+?)\.\s+The`),
 		regexp.MustCompile(`ICICI Bank Credit Card (\w+) has been used for a transaction of INR ([\d,\.]+) on ([A-Za-z]+ \d{1,2}, \d{4}) at (\d{2}:\d{2}:\d{2})\. Info: (.+?)\.`),
@@ -137,20 +112,13 @@ func ParseICICICreditCardTransaction(text string, dbClient models.DatabaseClient
 			return nil
 		}
 
-		datetimeStr := match[3] + " " + match[4]
-		dt, err := time.Parse("Jan 2, 2006 15:04:05", datetimeStr)
-		if err != nil {
-			log.Printf("Error parsing date: %v", err)
-			return nil
-		}
-
 		vendor := strings.TrimSpace(match[5])
 		return &models.Transaction{
 			Type:       "ICICICreditCard",
 			CardEnding: match[1],
 			Amount:     amount,
 			Vendor:     vendor,
-			DateTime:   dt,
+			DateTime:   receivedAt,
 			Category:   CategorizeTransaction(vendor, dbClient),
 		}
 	}
@@ -216,7 +184,7 @@ func ParseIMPSPaymentTransaction(text string, dbClient models.DatabaseClient) *m
 	return nil
 }
 
-func ParseRBLCreditCardTransaction(text string, dbClient models.DatabaseClient) *models.Transaction {
+func ParseRBLCreditCardTransaction(text string, receivedAt time.Time, dbClient models.DatabaseClient) *models.Transaction {
 	re := regexp.MustCompile(`INR([\d,\.]+)\s+spent\s+at\s+(.+?)\s+on\s+RBL\s+Bank\s+credit\s+card\s+\((\d+)\)\s+on\s+(\d{2}-\d{2}-\d{4})`)
 	match := re.FindStringSubmatch(text)
 	if len(match) != 5 {
@@ -229,19 +197,13 @@ func ParseRBLCreditCardTransaction(text string, dbClient models.DatabaseClient) 
 		return nil
 	}
 
-	dt, err := time.Parse("02-01-2006", match[4])
-	if err != nil {
-		log.Printf("Error parsing RBL date: %v", err)
-		return nil
-	}
-
 	vendor := strings.TrimSpace(match[2])
 	return &models.Transaction{
 		Type:       "RBLCreditCard",
 		CardEnding: match[3],
 		Amount:     amount,
 		Vendor:     vendor,
-		DateTime:   dt,
+		DateTime:   receivedAt,
 		Category:   CategorizeTransaction(vendor, dbClient),
 	}
 }
