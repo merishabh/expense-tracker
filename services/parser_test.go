@@ -13,7 +13,7 @@ func (d *parserTestDB) SaveTransaction(txn models.Transaction) error { return ni
 func (d *parserTestDB) UpdateTransaction(id string, txn models.Transaction) error {
 	return nil
 }
-func (d *parserTestDB) FetchAllTransactions() ([]models.Transaction, error) {
+func (d *parserTestDB) FetchTransactionsByDateRange(from, to time.Time) ([]models.Transaction, error) {
 	return nil, nil
 }
 func (d *parserTestDB) GetLatestTransactionTimeByType(txType string) (*time.Time, error) {
@@ -26,6 +26,7 @@ func (d *parserTestDB) GetCategoryMapping(vendor string) (*models.CategoryMappin
 func (d *parserTestDB) SaveCategoryMapping(mapping *models.CategoryMapping) error { return nil }
 func (d *parserTestDB) SaveMemory(mem models.Memory) error                        { return nil }
 func (d *parserTestDB) GetAllMemories() ([]models.Memory, error)                  { return nil, nil }
+func (d *parserTestDB) DeleteTransaction(id string) error                         { return nil }
 func (d *parserTestDB) Close() error                                              { return nil }
 
 func TestParseICICICreditCardTransaction_AmazonPayAlert(t *testing.T) {

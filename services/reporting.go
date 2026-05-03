@@ -1,7 +1,6 @@
 package services
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -164,22 +163,17 @@ func (s *ReportingService) GetLastNDaysTrend(days int) ([]TrendPoint, error) {
 		days = 10
 	}
 
-	txs, err := s.dbClient.FetchAllTransactions()
+	cutoff := time.Now().UTC().AddDate(0, 0, -(days - 1))
+	cutoff = time.Date(cutoff.Year(), cutoff.Month(), cutoff.Day(), 0, 0, 0, 0, time.UTC)
+
+	txs, err := s.dbClient.FetchTransactionsByDateRange(cutoff, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
 
-	cutoff := time.Now().UTC().AddDate(0, 0, -(days - 1))
-	cutoff = time.Date(cutoff.Year(), cutoff.Month(), cutoff.Day(), 0, 0, 0, 0, time.UTC)
-
 	byDay := make(map[string]*TrendPoint)
 	for _, tx := range txs {
-		ts := tx.DateTime.UTC()
-		if ts.Before(cutoff) {
-			continue
-		}
-
-		day := ts.Format("2006-01-02")
+		day := tx.DateTime.UTC().Format("2006-01-02")
 		point, exists := byDay[day]
 		if !exists {
 			point = &TrendPoint{Date: day}
@@ -205,23 +199,12 @@ func (s *ReportingService) GetLastNDaysTransactions(days int, limit int) ([]mode
 		days = 10
 	}
 
-	fmt.Printf("Fetching last %d days of transactions...\n", days)
-
-	txs, err := s.dbClient.FetchAllTransactions()
-	if err != nil {
-		return nil, err
-	}
-
 	cutoff := time.Now().UTC().AddDate(0, 0, -(days - 1))
 	cutoff = time.Date(cutoff.Year(), cutoff.Month(), cutoff.Day(), 0, 0, 0, 0, time.UTC)
 
-	filtered := make([]models.Transaction, 0, len(txs))
-
-	for _, tx := range txs {
-		ts := tx.DateTime.UTC()
-		if ts.After(cutoff) || ts.Equal(cutoff) {
-			filtered = append(filtered, tx)
-		}
+	filtered, err := s.dbClient.FetchTransactionsByDateRange(cutoff, time.Now().UTC())
+	if err != nil {
+		return nil, err
 	}
 
 	sort.Slice(filtered, func(i, j int) bool {
@@ -278,17 +261,9 @@ func (s *ReportingService) GetMonthlyComparison() (MonthlyComparison, error) {
 }
 
 func (s *ReportingService) ListTransactionsByDateRange(from, to time.Time, category string, limit int) ([]models.Transaction, error) {
-	txs, err := s.dbClient.FetchAllTransactions()
+	filtered, err := s.dbClient.FetchTransactionsByDateRange(from, to)
 	if err != nil {
 		return nil, err
-	}
-
-	filtered := make([]models.Transaction, 0, len(txs))
-	for _, tx := range txs {
-		ts := tx.DateTime.UTC()
-		if (ts.After(from) || ts.Equal(from)) && (ts.Before(to) || ts.Equal(to)) {
-			filtered = append(filtered, tx)
-		}
 	}
 
 	category = strings.TrimSpace(category)
@@ -347,25 +322,11 @@ func (s *ReportingService) groupBreakdown(period string, keyFn func(models.Trans
 }
 
 func (s *ReportingService) filteredTransactions(period string) ([]models.Transaction, error) {
-	txs, err := s.dbClient.FetchAllTransactions()
-	if err != nil {
-		return nil, err
-	}
-
 	start, end, err := utils.ResolvePeriod(normalizePeriod(period))
 	if err != nil {
 		return nil, err
 	}
-
-	filtered := make([]models.Transaction, 0, len(txs))
-	for _, tx := range txs {
-		ts := tx.DateTime.UTC()
-		if (ts.After(start) || ts.Equal(start)) && (ts.Before(end) || ts.Equal(end)) {
-			filtered = append(filtered, tx)
-		}
-	}
-
-	return filtered, nil
+	return s.dbClient.FetchTransactionsByDateRange(start, end)
 }
 
 func normalizePeriod(period string) string {

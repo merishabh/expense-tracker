@@ -156,30 +156,6 @@ type mongoTransaction struct {
 	Transaction `bson:",inline"`
 }
 
-// FetchAllTransactions retrieves all transactions from MongoDB
-func (m *MongoClient) FetchAllTransactions() ([]Transaction, error) {
-	collection := m.Database.Collection("transactions")
-
-	cursor, err := collection.Find(m.Ctx, bson.M{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch transactions: %v", err)
-	}
-	defer cursor.Close(m.Ctx)
-
-	var docs []mongoTransaction
-	if err := cursor.All(m.Ctx, &docs); err != nil {
-		return nil, fmt.Errorf("failed to decode transactions: %v", err)
-	}
-
-	transactions := make([]Transaction, len(docs))
-	for i, doc := range docs {
-		transactions[i] = doc.Transaction
-		transactions[i].ID = doc.ID.Hex()
-	}
-
-	fmt.Printf("📊 Fetched %d transactions from MongoDB\n", len(transactions))
-	return transactions, nil
-}
 
 // UpdateTransaction updates an existing transaction by ID
 func (m *MongoClient) UpdateTransaction(id string, tx Transaction) error {
@@ -205,6 +181,28 @@ func (m *MongoClient) UpdateTransaction(id string, tx Transaction) error {
 		return fmt.Errorf("failed to update transaction: %v", err)
 	}
 	return nil
+}
+
+func (m *MongoClient) FetchTransactionsByDateRange(from, to time.Time) ([]Transaction, error) {
+	collection := m.Database.Collection("transactions")
+	filter := bson.M{"datetime": bson.M{"$gte": from, "$lte": to}}
+	cursor, err := collection.Find(m.Ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch transactions by date range: %v", err)
+	}
+	defer cursor.Close(m.Ctx)
+
+	var docs []mongoTransaction
+	if err := cursor.All(m.Ctx, &docs); err != nil {
+		return nil, fmt.Errorf("failed to decode transactions: %v", err)
+	}
+
+	transactions := make([]Transaction, len(docs))
+	for i, doc := range docs {
+		transactions[i] = doc.Transaction
+		transactions[i].ID = doc.ID.Hex()
+	}
+	return transactions, nil
 }
 
 func (m *MongoClient) DeleteTransaction(id string) error {

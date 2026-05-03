@@ -28,7 +28,7 @@ func (d *googlePayTestDB) SaveTransactions(txns []models.Transaction) error {
 	return nil
 }
 
-func (d *googlePayTestDB) FetchAllTransactions() ([]models.Transaction, error) {
+func (d *googlePayTestDB) FetchTransactionsByDateRange(from, to time.Time) ([]models.Transaction, error) {
 	return nil, nil
 }
 
@@ -60,9 +60,8 @@ func (d *googlePayTestDB) GetAllMemories() ([]models.Memory, error) {
 	return nil, nil
 }
 
-func (d *googlePayTestDB) Close() error {
-	return nil
-}
+func (d *googlePayTestDB) DeleteTransaction(id string) error { return nil }
+func (d *googlePayTestDB) Close() error                      { return nil }
 
 func TestImportGooglePayHTMLStopsAtLatestStoredTransaction(t *testing.T) {
 	latestStored := time.Date(2026, 4, 17, 2, 14, 1, 0, time.UTC)

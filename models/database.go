@@ -11,7 +11,7 @@ type DatabaseClient interface {
 	SaveTransaction(txn Transaction) error
 	UpdateTransaction(id string, txn Transaction) error
 	DeleteTransaction(id string) error
-	FetchAllTransactions() ([]Transaction, error)
+	FetchTransactionsByDateRange(from, to time.Time) ([]Transaction, error)
 	GetLatestTransactionTimeByType(txType string) (*time.Time, error)
 	SaveUnparsedEmail(body string, headers map[string]string) error
 	GetCategoryMapping(vendor string) (*CategoryMapping, error)
