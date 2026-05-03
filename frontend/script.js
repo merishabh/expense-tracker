@@ -298,7 +298,7 @@ async function loadDashboard() {
             setTransactionsTitle(`Transactions: ${dashboardState.selectedCategory}`);
             renderTransactions(filtered);
         } else {
-            setTransactionsTitle('Last 10 Days Transactions');
+            setTransactionsTitle('Last 5 Days Transactions');
             renderTransactions(dashboardState.lastTenDaysTransactions);
         }
         renderHighlights(summary, monthlyComparison, categories, transactions);
@@ -631,7 +631,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 if (dashboardState.selectedCategory && dashboardState.selectedCategory.toLowerCase() === clickedCategory.toLowerCase()) {
                     dashboardState.selectedCategory = null;
-                    setTransactionsTitle('Last 10 Days Transactions');
+                    setTransactionsTitle('Last 5 Days Transactions');
                     renderTransactions(dashboardState.lastTenDaysTransactions);
                     renderCategoryBreakdown(dashboardState.categories);
                     scrollToTransactions();

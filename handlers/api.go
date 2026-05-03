@@ -100,7 +100,7 @@ func lastTenDaysTransactionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cleanup()
 
-	transactions, err := reporting.GetLastNDaysTransactions(10, 200)
+	transactions, err := reporting.GetLastNDaysTransactions(5, 200)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
