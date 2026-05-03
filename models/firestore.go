@@ -94,17 +94,13 @@ func (f *FirestoreClient) FetchTransactionsByDateRange(from, to time.Time) ([]Tr
 	return txs, nil
 }
 
-// UpdateTransaction updates an existing transaction by ID
+// UpdateTransaction updates an existing transaction by ID, preserving datetime.
 func (f *FirestoreClient) UpdateTransaction(id string, tx Transaction) error {
-	_, err := f.Client.Collection("transactions").Doc(id).Set(f.Ctx, map[string]interface{}{
-		"type":            tx.Type,
-		"vendor":          tx.Vendor,
-		"amount":          tx.Amount,
-		"category":        tx.Category,
-		"datetime":        tx.DateTime,
-		"cardending":      tx.CardEnding,
-		"debitedaccount":  tx.DebitedAccount,
-		"creditedaccount": tx.CreditedAccount,
+	_, err := f.Client.Collection("transactions").Doc(id).Update(f.Ctx, []firestore.Update{
+		{Path: "type", Value: tx.Type},
+		{Path: "vendor", Value: tx.Vendor},
+		{Path: "amount", Value: tx.Amount},
+		{Path: "category", Value: tx.Category},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to update transaction: %v", err)
