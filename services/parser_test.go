@@ -33,7 +33,7 @@ func TestParseICICICreditCardTransaction_AmazonPayAlert(t *testing.T) {
 	db := &parserTestDB{}
 	text := "Your ICICI Bank Credit Card XX3013 has been used for a transaction of INR 241.00 on Jan 23, 2026 at 04:52:40. Info: AMAZON PAY IN E COMMERCE."
 
-	tx := ParseICICICreditCardTransaction(text, db)
+	tx := ParseICICICreditCardTransaction(text, time.Now(), db)
 	if tx == nil {
 		t.Fatalf("expected transaction to be parsed")
 	}
@@ -59,7 +59,7 @@ func TestParseICICICreditCardTransaction_WithTrailingSentence(t *testing.T) {
 	db := &parserTestDB{}
 	text := "Your ICICI Bank Credit Card XX3013 has been used for a transaction of INR 241.00 on Jan 23, 2026 at 04:52:40. Info: AMAZON PAY IN E COMMERCE. The Available Credit Limit on your card is INR 1,00,000.00."
 
-	tx := ParseICICICreditCardTransaction(text, db)
+	tx := ParseICICICreditCardTransaction(text, time.Now(), db)
 	if tx == nil {
 		t.Fatalf("expected transaction to be parsed")
 	}

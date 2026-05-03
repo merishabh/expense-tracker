@@ -42,7 +42,9 @@ async function handleJSONResponse(response) {
 
 function formatDateTime(value) {
     if (!value) return '-';
-    return new Date(value).toLocaleString();
+    // Times are stored as IST wall-clock values; display without browser timezone
+    // conversion so the time shown matches what the transaction source provided.
+    return new Date(value).toLocaleString('en-IN', { timeZone: 'UTC' });
 }
 
 function getUploadErrorMessage(error) {
