@@ -68,10 +68,13 @@ func (f *FirestoreClient) SaveTransactions(txns []Transaction) error {
 	return nil
 }
 
-// FetchAllTransactions retrieves all transactions from Firestore
-func (f *FirestoreClient) FetchAllTransactions() ([]Transaction, error) {
+
+func (f *FirestoreClient) FetchTransactionsByDateRange(from, to time.Time) ([]Transaction, error) {
 	var txs []Transaction
-	iter := f.Client.Collection("transactions").Documents(f.Ctx)
+	iter := f.Client.Collection("transactions").
+		Where("datetime", ">=", from).
+		Where("datetime", "<=", to).
+		Documents(f.Ctx)
 	defer iter.Stop()
 	for {
 		doc, err := iter.Next()
@@ -88,7 +91,6 @@ func (f *FirestoreClient) FetchAllTransactions() ([]Transaction, error) {
 		tx.ID = doc.Ref.ID
 		txs = append(txs, tx)
 	}
-	fmt.Printf("📊 Fetched %d transactions from Firestore\n", len(txs))
 	return txs, nil
 }
 

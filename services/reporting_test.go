@@ -15,8 +15,14 @@ func (d *reportingTestDB) SaveTransaction(txn models.Transaction) error { return
 func (d *reportingTestDB) UpdateTransaction(id string, txn models.Transaction) error {
 	return nil
 }
-func (d *reportingTestDB) FetchAllTransactions() ([]models.Transaction, error) {
-	return d.transactions, nil
+func (d *reportingTestDB) FetchTransactionsByDateRange(from, to time.Time) ([]models.Transaction, error) {
+	var filtered []models.Transaction
+	for _, tx := range d.transactions {
+		if !tx.DateTime.Before(from) && !tx.DateTime.After(to) {
+			filtered = append(filtered, tx)
+		}
+	}
+	return filtered, nil
 }
 func (d *reportingTestDB) GetLatestTransactionTimeByType(txType string) (*time.Time, error) {
 	return nil, nil
@@ -30,6 +36,7 @@ func (d *reportingTestDB) GetCategoryMapping(vendor string) (*models.CategoryMap
 func (d *reportingTestDB) SaveCategoryMapping(mapping *models.CategoryMapping) error { return nil }
 func (d *reportingTestDB) SaveMemory(mem models.Memory) error                        { return nil }
 func (d *reportingTestDB) GetAllMemories() ([]models.Memory, error)                  { return nil, nil }
+func (d *reportingTestDB) DeleteTransaction(id string) error                         { return nil }
 func (d *reportingTestDB) Close() error                                              { return nil }
 
 func TestGetTotalSummaryDeductsCredits(t *testing.T) {
