@@ -273,6 +273,31 @@ func updateTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "ok"})
 }
 
+func deleteTransactionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Only DELETE method allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+	dbClient, err := models.NewDatabaseClient()
+	if err != nil {
+		http.Error(w, "Database connection failed", http.StatusInternalServerError)
+		return
+	}
+	defer dbClient.Close()
+	if err := dbClient.DeleteTransaction(id); err != nil {
+		log.Printf("transaction delete failed id=%s err=%v", id, err)
+		http.Error(w, "Failed to delete transaction", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("transaction deleted id=%s", id)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "ok"})
+}
+
 func addManualTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method allowed", http.StatusMethodNotAllowed)
@@ -466,6 +491,7 @@ func StartAPIServer() {
 	http.HandleFunc("/api/jobs/sync-hdfc", syncHDFCHandler)
 	http.HandleFunc("/api/transactions/manual", apiAuthMiddleware(addManualTransactionHandler))
 	http.HandleFunc("/api/transactions/update", apiAuthMiddleware(updateTransactionHandler))
+	http.HandleFunc("/api/transactions/delete", apiAuthMiddleware(deleteTransactionHandler))
 	http.HandleFunc("/api/import/google-pay", apiAuthMiddleware(importGooglePayHandler))
 	http.HandleFunc("/api/transactions", apiAuthMiddleware(transactionsHandler))
 	http.HandleFunc("/api/transactions/range", apiAuthMiddleware(transactionsByRangeHandler))

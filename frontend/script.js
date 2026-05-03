@@ -171,6 +171,7 @@ function renderTransactions(transactions, emptyMessage = 'No transactions found.
             <td>${formatCategory(tx.category || 'Other')}</td>
             <td>${tx.type || '-'}</td>
             <td>${formatCurrency(tx.amount)}</td>
+            <td><button class="delete-btn" data-id="${tx.id || ''}" title="Delete">&#x2715;</button></td>
         </tr>
     `).join('');
 
@@ -183,6 +184,7 @@ function renderTransactions(transactions, emptyMessage = 'No transactions found.
                     <th>Category</th>
                     <th>Source</th>
                     <th>Amount</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -348,13 +350,14 @@ function renderRangeResults(data) {
             <td>${formatCategory(tx.category || 'Other')}</td>
             <td>${tx.type || '-'}</td>
             <td>${formatCurrency(tx.amount)}</td>
+            <td><button class="delete-btn" data-id="${tx.id || ''}" title="Delete">&#x2715;</button></td>
         </tr>
     `).join('');
 
     table.innerHTML = `
         <table>
             <thead>
-                <tr><th>Date</th><th>Merchant</th><th>Category</th><th>Source</th><th>Amount</th></tr>
+                <tr><th>Date</th><th>Merchant</th><th>Category</th><th>Source</th><th>Amount</th><th></th></tr>
             </thead>
             <tbody>${rows}</tbody>
         </table>
@@ -477,6 +480,17 @@ function openEditModal(tx) {
 
 function closeEditModal() {
     document.getElementById('editModal').style.display = 'none';
+}
+
+async function deleteTransaction(id) {
+    if (!id) return;
+    if (!confirm('Delete this transaction? This cannot be undone.')) return;
+    try {
+        await sendJSON(`/api/transactions/delete?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+        await loadDashboard();
+    } catch (err) {
+        alert('Failed to delete: ' + err.message);
+    }
 }
 
 async function saveEditedTransaction() {
@@ -663,11 +677,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('editModalClose')?.addEventListener('click', closeEditModal);
     document.getElementById('editSave')?.addEventListener('click', saveEditedTransaction);
+    document.getElementById('editDelete')?.addEventListener('click', () => {
+        const id = document.getElementById('editId').value;
+        closeEditModal();
+        deleteTransaction(id);
+    });
     document.getElementById('editModal')?.addEventListener('click', (e) => {
         if (e.target === document.getElementById('editModal')) closeEditModal();
     });
 
     document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('delete-btn')) {
+            e.stopPropagation();
+            deleteTransaction(e.target.getAttribute('data-id'));
+            return;
+        }
         const row = e.target.closest('.tx-row');
         if (!row) return;
         const id = row.getAttribute('data-id');

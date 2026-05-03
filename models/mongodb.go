@@ -207,6 +207,16 @@ func (m *MongoClient) UpdateTransaction(id string, tx Transaction) error {
 	return nil
 }
 
+func (m *MongoClient) DeleteTransaction(id string) error {
+	collection := m.Database.Collection("transactions")
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return fmt.Errorf("invalid transaction ID: %v", err)
+	}
+	_, err = collection.DeleteOne(m.Ctx, bson.M{"_id": objID})
+	return err
+}
+
 func (m *MongoClient) GetLatestTransactionTimeByType(txType string) (*time.Time, error) {
 	collection := m.Database.Collection("transactions")
 

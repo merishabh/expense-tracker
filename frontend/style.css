@@ -417,6 +417,23 @@ td {
     background: rgba(99, 102, 241, 0.06);
 }
 
+.delete-btn {
+    background: none;
+    border: none;
+    color: #cbd5e1;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: color 0.15s, background 0.15s;
+}
+
+.delete-btn:hover {
+    color: #dc2626;
+    background: #fee2e2;
+}
+
 .modal-overlay {
     position: fixed;
     inset: 0;
