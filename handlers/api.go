@@ -532,7 +532,7 @@ func StartAPIServer() {
 	http.HandleFunc("/api/summary/trend/last-10-days", apiAuthMiddleware(lastTenDaysTrendHandler))
 	http.HandleFunc("/api/summary/monthly-comparison", apiAuthMiddleware(monthlyComparisonHandler))
 	http.HandleFunc("/api/chat", apiAuthMiddleware(chatHandler))
-	http.HandleFunc("/api/evals/run", apiAuthMiddleware(evalRunHandler))
+	http.HandleFunc("/api/evals/run", webAuthMiddleware(evalRunHandler))
 
 	// Protected frontend
 	http.HandleFunc("/", webAuthMiddleware(serveStaticFiles))
