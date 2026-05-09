@@ -1,0 +1,10 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest"
+  },
+  "scripts": {
+    "smoke": "node smoke.js",
+    "eval": "node run.js"
+  }
+}

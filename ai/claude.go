@@ -35,7 +35,12 @@ func NewClaudeClient(apiKey string) *ClaudeClient {
 	return &ClaudeClient{client: &c}
 }
 
-func (c *ClaudeClient) Chat(question string, history []ChatMessage, memories string, executor ToolExecutor) (string, error) {
+type ChatUsage struct {
+	InputTokens  int64 `json:"input_tokens"`
+	OutputTokens int64 `json:"output_tokens"`
+}
+
+func (c *ClaudeClient) Chat(question string, history []ChatMessage, memories string, executor ToolExecutor) (string, ChatUsage, error) {
 	memoryBlock := ""
 	if memories != "" {
 		memoryBlock = "\n\nWhat you know about this user:\n" + memories
@@ -72,6 +77,8 @@ Memory rules (call save_memory proactively):
 
 	log.Printf("claude chat start: question=%q history_len=%d", question, len(history))
 
+	var usage ChatUsage
+
 	// ── Agentic loop ──────────────────────────────────────────────────────────
 	// Claude may call tools multiple times before producing a final text answer.
 	// Each iteration: call API → if tool_use, execute tools and append results → repeat.
@@ -84,19 +91,23 @@ Memory rules (call save_memory proactively):
 			Messages:  messages,
 		})
 		if err != nil {
-			return "", fmt.Errorf("claude API error: %w", err)
+			return "", usage, fmt.Errorf("claude API error: %w", err)
 		}
 
-		log.Printf("claude iteration=%d stop_reason=%s content_blocks=%d", iteration, msg.StopReason, len(msg.Content))
+		usage.InputTokens += msg.Usage.InputTokens
+		usage.OutputTokens += msg.Usage.OutputTokens
+
+		log.Printf("claude iteration=%d stop_reason=%s content_blocks=%d input_tokens=%d output_tokens=%d",
+			iteration, msg.StopReason, len(msg.Content), msg.Usage.InputTokens, msg.Usage.OutputTokens)
 
 		// ── end_turn: Claude is done, extract the text answer ─────────────────
 		if msg.StopReason == "end_turn" {
 			for _, block := range msg.Content {
 				if block.Type == "text" {
-					return block.Text, nil
+					return block.Text, usage, nil
 				}
 			}
-			return "", fmt.Errorf("end_turn but no text block in response")
+			return "", usage, fmt.Errorf("end_turn but no text block in response")
 		}
 
 		// ── tool_use: execute each requested tool, collect results ─────────────
@@ -145,8 +156,8 @@ Memory rules (call save_memory proactively):
 		}
 
 		// Unexpected stop reason
-		return "", fmt.Errorf("unexpected stop_reason: %s", msg.StopReason)
+		return "", usage, fmt.Errorf("unexpected stop_reason: %s", msg.StopReason)
 	}
 
-	return "", fmt.Errorf("agentic loop exceeded max iterations")
+	return "", usage, fmt.Errorf("agentic loop exceeded max iterations")
 }

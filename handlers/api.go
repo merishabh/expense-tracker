@@ -583,14 +583,17 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 
 	claudeClient := ai.NewClaudeClient(apiKey)
 	executor := NewToolExecutor(reporting, memorySvc)
-	answer, err := claudeClient.Chat(req.Question, req.History, memories, executor)
+	answer, usage, err := claudeClient.Chat(req.Question, req.History, memories, executor)
 	if err != nil {
 		log.Printf("chat handler: claude error: %v", err)
 		http.Error(w, "failed to get response", http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"answer": answer})
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"answer": answer,
+		"usage":  usage,
+	})
 }
 
 func newReportingService(w http.ResponseWriter) (*services.ReportingService, func(), bool) {
