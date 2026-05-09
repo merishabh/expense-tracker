@@ -616,6 +616,13 @@ td {
     color: #1e293b;
     border-bottom-left-radius: 3px;
 }
+.chat-msg-meta {
+    align-self: flex-start;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: -4px;
+    padding-left: 2px;
+}
 
 #chatInputRow {
     display: flex;

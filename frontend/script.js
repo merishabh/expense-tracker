@@ -755,6 +755,12 @@ function initChat() {
             });
             thinkingEl.textContent = data.answer;
             history.push({ role: 'assistant', content: data.answer });
+            if (data.usage) {
+                const meta = document.createElement('div');
+                meta.className = 'chat-msg-meta';
+                meta.textContent = `${data.usage.input_tokens} in · ${data.usage.output_tokens} out`;
+                thinkingEl.after(meta);
+            }
         } catch (err) {
             thinkingEl.textContent = 'Error: ' + (err.message || 'something went wrong');
             history.pop();
