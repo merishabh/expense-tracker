@@ -15,8 +15,9 @@ import (
 
 // FirestoreClient wraps Firestore client
 type FirestoreClient struct {
-	Client *firestore.Client
-	Ctx    context.Context
+	Client            *firestore.Client
+	Ctx               context.Context
+	memoriesCollection string
 }
 
 // NewFirestoreClient creates the Firestore client
@@ -36,7 +37,14 @@ func NewFirestoreClient() (*FirestoreClient, error) {
 	}
 
 	fmt.Printf("Connected to Firestore project: %s\n", projectID)
-	return &FirestoreClient{Client: client, Ctx: ctx}, nil
+	return &FirestoreClient{Client: client, Ctx: ctx, memoriesCollection: "chat_memories"}, nil
+}
+
+// WithMemoriesCollection overrides the Firestore collection used for memories.
+// Use in tests to avoid writing into the production chat_memories collection.
+func (f *FirestoreClient) WithMemoriesCollection(name string) *FirestoreClient {
+	f.memoriesCollection = name
+	return f
 }
 
 // SaveTransaction stores a Transaction document
@@ -271,7 +279,7 @@ func (f *FirestoreClient) SaveCategoryMapping(mapping *CategoryMapping) error {
 }
 
 func (f *FirestoreClient) SaveMemory(mem Memory) error {
-	_, _, err := f.Client.Collection("chat_memories").Add(f.Ctx, mem)
+	_, _, err := f.Client.Collection(f.memoriesCollection).Add(f.Ctx, mem)
 	if err != nil {
 		return fmt.Errorf("failed to save memory: %v", err)
 	}
@@ -279,7 +287,7 @@ func (f *FirestoreClient) SaveMemory(mem Memory) error {
 }
 
 func (f *FirestoreClient) GetAllMemories() ([]Memory, error) {
-	iter := f.Client.Collection("chat_memories").OrderBy("created_at", firestore.Desc).Documents(f.Ctx)
+	iter := f.Client.Collection(f.memoriesCollection).OrderBy("created_at", firestore.Desc).Documents(f.Ctx)
 	var memories []Memory
 	for {
 		doc, err := iter.Next()
@@ -295,4 +303,30 @@ func (f *FirestoreClient) GetAllMemories() ([]Memory, error) {
 		}
 	}
 	return memories, nil
+}
+
+// DeleteAllMemories deletes every document in the memories collection.
+// Only used in integration tests — not on the DatabaseClient interface.
+func (f *FirestoreClient) DeleteAllMemories() error {
+	iter := f.Client.Collection(f.memoriesCollection).Documents(f.Ctx)
+	batch := f.Client.Batch()
+	count := 0
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to list memories for deletion: %v", err)
+		}
+		batch.Delete(doc.Ref)
+		count++
+	}
+	if count == 0 {
+		return nil
+	}
+	if _, err := batch.Commit(f.Ctx); err != nil {
+		return fmt.Errorf("failed to delete memories: %v", err)
+	}
+	return nil
 }

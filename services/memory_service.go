@@ -36,3 +36,9 @@ func (s *MemoryService) LoadMemories() string {
 	}
 	return sb.String()
 }
+
+// LoadMemoriesRaw returns the raw memory slice. Used by integration tests to
+// assert on individual memory fields after a Chat call.
+func (s *MemoryService) LoadMemoriesRaw() ([]models.Memory, error) {
+	return s.db.GetAllMemories()
+}
