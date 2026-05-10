@@ -278,8 +278,22 @@ func (f *FirestoreClient) SaveCategoryMapping(mapping *CategoryMapping) error {
 	return nil
 }
 
+// firestoreMemory is a Firestore-safe representation of Memory.
+// The Memory struct uses primitive.ObjectID (a MongoDB type) which Firestore
+// cannot round-trip through DataTo — so we use a plain struct here instead.
+type firestoreMemory struct {
+	Type      string    `firestore:"type"`
+	Content   string    `firestore:"content"`
+	CreatedAt time.Time `firestore:"created_at"`
+}
+
 func (f *FirestoreClient) SaveMemory(mem Memory) error {
-	_, _, err := f.Client.Collection(f.memoriesCollection).Add(f.Ctx, mem)
+	doc := firestoreMemory{
+		Type:      mem.Type,
+		Content:   mem.Content,
+		CreatedAt: time.Now(),
+	}
+	_, _, err := f.Client.Collection(f.memoriesCollection).Add(f.Ctx, doc)
 	if err != nil {
 		return fmt.Errorf("failed to save memory: %v", err)
 	}
@@ -297,10 +311,12 @@ func (f *FirestoreClient) GetAllMemories() ([]Memory, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch memories: %v", err)
 		}
-		var m Memory
-		if err := doc.DataTo(&m); err == nil {
-			memories = append(memories, m)
+		var fm firestoreMemory
+		if err := doc.DataTo(&fm); err != nil {
+			fmt.Printf("warning: failed to deserialize memory doc %s: %v\n", doc.Ref.ID, err)
+			continue
 		}
+		memories = append(memories, Memory{Type: fm.Type, Content: fm.Content, CreatedAt: fm.CreatedAt})
 	}
 	return memories, nil
 }
