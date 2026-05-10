@@ -88,14 +88,24 @@ func runMemoryCreationEval(db *models.FirestoreClient, reportingSvc *services.Re
 		return evalResult{Name: name, Passed: false, Score: -1, Details: "cleanup failed: " + err.Error(), Elapsed: time.Since(start)}
 	}
 
-	_, _, err := claudeClient.Chat(question, nil, "", NewToolExecutor(reportingSvc, memorySvc))
+	// Wrap the real executor to track which tools Claude actually calls.
+	var toolsCalled []string
+	inner := NewToolExecutor(reportingSvc, memorySvc)
+	tracked := ai.ToolExecutor(func(name string, input map[string]any) (string, error) {
+		toolsCalled = append(toolsCalled, name)
+		return inner(name, input)
+	})
+
+	_, _, err := claudeClient.Chat(question, nil, "", tracked)
 	if err != nil {
 		return evalResult{Name: name, Passed: false, Score: -1, Details: "chat failed: " + err.Error(), Elapsed: time.Since(start)}
 	}
 
 	memories, err := memorySvc.LoadMemoriesRaw()
 	if err != nil || len(memories) == 0 {
-		return evalResult{Name: name, Passed: false, Score: -1, Details: "no memory saved", Elapsed: time.Since(start)}
+		return evalResult{Name: name, Passed: false, Score: -1,
+			Details: fmt.Sprintf("no memory saved — tools called: %v", toolsCalled),
+			Elapsed: time.Since(start)}
 	}
 
 	var matched *models.Memory
