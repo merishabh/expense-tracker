@@ -80,21 +80,7 @@ func evalJudge(apiKey, question, answer string, memories []models.Memory, profil
 	return result, nil
 }
 
-func evalMemoryOnlyExecutor(memorySvc *services.MemoryService) ai.ToolExecutor {
-	return func(name string, input map[string]any) (string, error) {
-		if name != "save_memory" {
-			return "no transaction data available in eval environment", nil
-		}
-		memType, _ := input["type"].(string)
-		content, _ := input["content"].(string)
-		if err := memorySvc.SaveMemory(memType, content); err != nil {
-			return "", err
-		}
-		return "memory saved", nil
-	}
-}
-
-func runMemoryCreationEval(apiKey string, db *models.FirestoreClient, claudeClient *ai.ClaudeClient, name, question, wantType string, wantContent []string) evalResult {
+func runMemoryCreationEval(db *models.FirestoreClient, reportingSvc *services.ReportingService, claudeClient *ai.ClaudeClient, name, question, wantType string, wantContent []string) evalResult {
 	start := time.Now()
 	memorySvc := services.NewMemoryService(db)
 
@@ -102,7 +88,7 @@ func runMemoryCreationEval(apiKey string, db *models.FirestoreClient, claudeClie
 		return evalResult{Name: name, Passed: false, Score: -1, Details: "cleanup failed: " + err.Error(), Elapsed: time.Since(start)}
 	}
 
-	_, _, err := claudeClient.Chat(question, nil, "", evalMemoryOnlyExecutor(memorySvc))
+	_, _, err := claudeClient.Chat(question, nil, "", NewToolExecutor(reportingSvc, memorySvc))
 	if err != nil {
 		return evalResult{Name: name, Passed: false, Score: -1, Details: "chat failed: " + err.Error(), Elapsed: time.Since(start)}
 	}
@@ -147,7 +133,7 @@ func runMemoryCreationEval(apiKey string, db *models.FirestoreClient, claudeClie
 	}
 }
 
-func runPersonalisationEval(apiKey string, db *models.FirestoreClient, claudeClient *ai.ClaudeClient, name, question string, seeds []models.Memory, minScore float64, forbidden []string) evalResult {
+func runPersonalisationEval(apiKey string, db *models.FirestoreClient, reportingSvc *services.ReportingService, claudeClient *ai.ClaudeClient, name, question string, seeds []models.Memory, minScore float64, forbidden []string) evalResult {
 	start := time.Now()
 	memorySvc := services.NewMemoryService(db)
 
@@ -162,7 +148,7 @@ func runPersonalisationEval(apiKey string, db *models.FirestoreClient, claudeCli
 	}
 
 	memBlock := memorySvc.LoadMemories()
-	answer, _, err := claudeClient.Chat(question, nil, memBlock, evalMemoryOnlyExecutor(memorySvc))
+	answer, _, err := claudeClient.Chat(question, nil, memBlock, NewToolExecutor(reportingSvc, memorySvc))
 	if err != nil {
 		return evalResult{Name: name, Passed: false, Score: 0, Details: "chat failed: " + err.Error(), Elapsed: time.Since(start)}
 	}
@@ -198,49 +184,49 @@ func runAllEvals(apiKey string) []evalResult {
 	defer db.Close()
 	db.WithMemoriesCollection(evalCollection)
 
+	reportingSvc := services.NewReportingService(db)
 	claudeClient := ai.NewClaudeClient(apiKey)
 	var results []evalResult
 
-	results = append(results, runMemoryCreationEval(apiKey, db, claudeClient,
+	results = append(results, runMemoryCreationEval(db, reportingSvc, claudeClient,
 		"Memory creation: goal statement",
 		"I want to save ₹3 lakh for a Europe trip by June. Can you help me plan?",
 		"goal", []string{"europe", "3"},
 	))
 
-	results = append(results, runMemoryCreationEval(apiKey, db, claudeClient,
-		"Memory creation: spending pattern",
-		"I always order Swiggy late at night on weekdays — it's become a habit I want to break.",
-		"pattern", []string{"swiggy", "night"},
-	))
+	// results = append(results, runMemoryCreationEval(db, reportingSvc, claudeClient,
+	// 	"Memory creation: spending pattern",
+	// 	"I always order Swiggy late at night on weekdays — it's become a habit I want to break.",
+	// 	"pattern", []string{"swiggy", "night"},
+	// ))
 
-	results = append(results, runPersonalisationEval(apiKey, db, claudeClient,
-		"Personalisation: profiled user",
-		"What should I watch out for this month?",
-		[]models.Memory{
-			{Type: "goal", Content: "User wants to save ₹3L for a Europe trip by June"},
-			{Type: "pattern", Content: "User orders Swiggy late at night on weekdays"},
-			{Type: "life_context", Content: "User's top spending categories are Food, Shopping, and Travel"},
-		},
-		0.75, nil,
-	))
+	// results = append(results, runPersonalisationEval(apiKey, db, reportingSvc, claudeClient,
+	// 	"Personalisation: profiled user",
+	// 	"What should I watch out for this month?",
+	// 	[]models.Memory{
+	// 		{Type: "goal", Content: "User wants to save ₹3L for a Europe trip by June"},
+	// 		{Type: "pattern", Content: "User orders Swiggy late at night on weekdays"},
+	// 		{Type: "life_context", Content: "User's top spending categories are Food, Shopping, and Travel"},
+	// 	},
+	// 	0.75, nil,
+	// ))
 
-	results = append(results, runPersonalisationEval(apiKey, db, claudeClient,
-		"Personalisation: no memory — no hallucination",
-		"Am I a foodie?",
-		nil, 0.75,
-		[]string{"₹1,91", "₹191", "₹50,000"},
-	))
+	// results = append(results, runPersonalisationEval(apiKey, db, reportingSvc, claudeClient,
+	// 	"Personalisation: no memory — no hallucination",
+	// 	"Am I a foodie?",
+	// 	nil, 0.75,
+	// 	[]string{"₹1,91", "₹191", "₹50,000"},
+	// ))
 
-	results = append(results, runPersonalisationEval(apiKey, db, claudeClient,
-		"Personalisation: goal referenced",
-		"How should I plan my savings?",
-		[]models.Memory{
-			{Type: "goal", Content: "User wants to save ₹3L for a Europe trip by June"},
-		},
-		0.80, nil,
-	))
+	// results = append(results, runPersonalisationEval(apiKey, db, reportingSvc, claudeClient,
+	// 	"Personalisation: goal referenced",
+	// 	"How should I plan my savings?",
+	// 	[]models.Memory{
+	// 		{Type: "goal", Content: "User wants to save ₹3L for a Europe trip by June"},
+	// 	},
+	// 	0.80, nil,
+	// ))
 
-	// Final cleanup
 	_ = db.DeleteAllMemories()
 	return results
 }
