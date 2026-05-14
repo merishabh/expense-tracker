@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	secretmanager "cloud.google.com/go/secretmanager/apiv1"
+	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
@@ -22,19 +24,24 @@ var (
 )
 
 func GetClient() (*http.Client, error) {
+	ctx := context.Background()
 	tokFile := gmailTokenPath()
 	tok, err := tokenFromFile(tokFile)
 	if err != nil {
-		if shouldUseInteractiveAuth() {
-			log.Printf("No valid token found, starting OAuth flow...")
-			tok = StartAuthServer()
-		} else {
-			return nil, fmt.Errorf("gmail token not available at %s: %w", tokFile, err)
+		log.Printf("Token not found on disk, trying Secret Manager: %v", err)
+		tok, err = tokenFromSecretManager(ctx)
+		if err != nil {
+			if shouldUseInteractiveAuth() {
+				log.Printf("No valid token found, starting OAuth flow...")
+				tok = StartAuthServer()
+			} else {
+				return nil, fmt.Errorf("gmail token not available: %w", err)
+			}
 		}
 	}
 
 	if tok.RefreshToken != "" {
-		tokenSource := Config.TokenSource(context.Background(), tok)
+		tokenSource := Config.TokenSource(ctx, tok)
 		newTok, err := tokenSource.Token()
 		if err != nil {
 			log.Printf("Token refresh failed: %v", err)
@@ -48,6 +55,9 @@ func GetClient() (*http.Client, error) {
 		} else {
 			if newTok.AccessToken != tok.AccessToken {
 				saveToken(tokFile, newTok)
+				if err := saveTokenToSecretManager(ctx, newTok); err != nil {
+					log.Printf("Warning: failed to save refreshed token to Secret Manager: %v", err)
+				}
 				tok = newTok
 			}
 		}
@@ -61,7 +71,7 @@ func GetClient() (*http.Client, error) {
 		}
 	}
 
-	client := Config.Client(context.Background(), tok)
+	client := Config.Client(ctx, tok)
 	return client, nil
 }
 
@@ -89,6 +99,75 @@ func InitGmailService() (*gmail.Service, error) {
 	}
 
 	return srv, nil
+}
+
+func gcpProjectID() string {
+	if id := os.Getenv("GCP_PROJECT_ID"); id != "" {
+		return id
+	}
+	return os.Getenv("GOOGLE_CLOUD_PROJECT")
+}
+
+func gmailTokenSecretName() string {
+	if name := os.Getenv("GMAIL_TOKEN_SECRET_NAME"); name != "" {
+		return name
+	}
+	return "gmail-token"
+}
+
+func tokenFromSecretManager(ctx context.Context) (*oauth2.Token, error) {
+	projectID := gcpProjectID()
+	if projectID == "" {
+		return nil, errors.New("GCP_PROJECT_ID not set")
+	}
+
+	client, err := secretmanager.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create secret manager client: %w", err)
+	}
+	defer client.Close()
+
+	name := fmt.Sprintf("projects/%s/secrets/%s/versions/latest", projectID, gmailTokenSecretName())
+	result, err := client.AccessSecretVersion(ctx, &secretmanagerpb.AccessSecretVersionRequest{Name: name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to access secret %s: %w", name, err)
+	}
+
+	tok := &oauth2.Token{}
+	if err := json.Unmarshal(result.Payload.Data, tok); err != nil {
+		return nil, fmt.Errorf("failed to parse token from secret manager: %w", err)
+	}
+	log.Printf("Loaded gmail token from Secret Manager")
+	return tok, nil
+}
+
+func saveTokenToSecretManager(ctx context.Context, token *oauth2.Token) error {
+	projectID := gcpProjectID()
+	if projectID == "" {
+		return nil
+	}
+
+	client, err := secretmanager.NewClient(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create secret manager client: %w", err)
+	}
+	defer client.Close()
+
+	data, err := json.Marshal(token)
+	if err != nil {
+		return fmt.Errorf("failed to marshal token: %w", err)
+	}
+
+	parent := fmt.Sprintf("projects/%s/secrets/%s", projectID, gmailTokenSecretName())
+	_, err = client.AddSecretVersion(ctx, &secretmanagerpb.AddSecretVersionRequest{
+		Parent:  parent,
+		Payload: &secretmanagerpb.SecretPayload{Data: data},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add secret version: %w", err)
+	}
+	log.Printf("Saved refreshed gmail token to Secret Manager")
+	return nil
 }
 
 func tokenFromFile(file string) (*oauth2.Token, error) {

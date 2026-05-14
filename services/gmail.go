@@ -54,7 +54,7 @@ func getMessageBody(payload *gmail.MessagePart) string {
 func ProcessEmails(srv *gmail.Service, user string, dbClient models.DatabaseClient) (EmailSyncStats, error) {
 	stats := EmailSyncStats{}
 	pageToken := ""
-	query := "((from:alerts@hdfcbank.net OR from:alerts@hdfcbank.bank.in) OR (from:credit_cards@icicibank.com OR from:credit_cards@icici.bank.in) OR (from:RBLAlerts@rbl.bank.in)) newer_than:1d"
+	query := "((from:alerts@hdfcbank.net OR from:alerts@hdfcbank.bank.in) OR (from:credit_cards@icicibank.com OR from:credit_cards@icici.bank.in) OR (from:RBLAlerts@rbl.bank.in)) newer_than:4d"
 
 	log.Printf("gmail sync started user=%s query=%q", user, query)
 	for {
