@@ -85,45 +85,110 @@ function renderCategoryBreakdown(items) {
         return;
     }
 
+    const total = items.reduce((sum, item) => sum + (item.amount || 0), 0);
+    const maxAmount = Math.max(...items.map(item => item.amount), 1);
+
     container.innerHTML = items.map(item => {
+        const pct = total > 0 ? ((item.amount / total) * 100).toFixed(1) : '0';
+        const barWidth = `${Math.max((item.amount / maxAmount) * 100, 3)}%`;
         const isActive = dashboardState.selectedCategory && dashboardState.selectedCategory.toLowerCase() === String(item.label || '').toLowerCase();
         return `
-            <button class="stack-row clickable ${isActive ? 'active' : ''}" data-category="${item.label}" type="button">
-                <div>
+            <button class="cat-row ${isActive ? 'active' : ''}" data-category="${item.label}" type="button">
+                <div class="cat-label">
                     <strong>${formatCategory(item.label)}</strong>
-                    <span>${item.count} txns</span>
+                    <span>${item.count} txns · ${pct}%</span>
                 </div>
-                <strong>${formatCurrency(item.amount)}</strong>
+                <div class="cat-bar-track">
+                    <div class="cat-bar" style="width:${barWidth}"></div>
+                </div>
+                <strong class="cat-amount">${formatCurrency(item.amount)}</strong>
             </button>
         `;
     }).join('');
 }
 
+let trendChartInstance = null;
+
 function renderTrend(items) {
-    const container = document.getElementById('trendList');
-    if (!container) return;
+    const canvas = document.getElementById('trendCanvas');
+    if (!canvas) return;
+
+    if (trendChartInstance) {
+        trendChartInstance.destroy();
+        trendChartInstance = null;
+    }
+
+    const wrap = canvas.parentElement;
+    const emptyId = 'trendEmpty';
+    const existing = document.getElementById(emptyId);
+    if (existing) existing.remove();
 
     if (!items.length) {
-        container.innerHTML = '<p class="empty">No trend data for this period.</p>';
+        canvas.style.display = 'none';
+        const msg = document.createElement('p');
+        msg.id = emptyId;
+        msg.className = 'empty';
+        msg.textContent = 'No trend data for this period.';
+        wrap.appendChild(msg);
         return;
     }
 
-    const maxAmount = Math.max(...items.map(item => item.amount), 1);
-    container.innerHTML = items.map(item => {
-        const width = `${Math.max((item.amount / maxAmount) * 100, 8)}%`;
-        return `
-            <div class="trend-row">
-                <div class="trend-meta">
-                    <strong>${item.date}</strong>
-                    <span>${item.count} txns</span>
-                </div>
-                <div class="trend-bar-wrap">
-                    <div class="trend-bar" style="width:${width}"></div>
-                </div>
-                <strong class="trend-value">${formatCurrency(item.amount)}</strong>
-            </div>
-        `;
-    }).join('');
+    canvas.style.display = 'block';
+
+    trendChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: items.map(item => item.date),
+            datasets: [{
+                data: items.map(item => item.amount),
+                borderColor: '#7C6FE0',
+                backgroundColor: 'rgba(124,111,224,0.10)',
+                borderWidth: 2.5,
+                pointBackgroundColor: '#7C6FE0',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: ctx => {
+                            const idx = ctx[0].dataIndex;
+                            return `${items[idx].date} · ${items[idx].count} txns`;
+                        },
+                        label: ctx => formatCurrency(ctx.parsed.y)
+                    },
+                    backgroundColor: '#1a1a2e',
+                    titleFont: { size: 12 },
+                    bodyFont: { size: 13, weight: '700' },
+                    padding: 10,
+                    cornerRadius: 8
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { size: 11 }, color: '#6B7280', maxRotation: 45 }
+                },
+                y: {
+                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    ticks: {
+                        callback: val => val >= 1000 ? `₹${(val / 1000).toFixed(0)}k` : `₹${val}`,
+                        font: { size: 11 },
+                        color: '#6B7280'
+                    }
+                }
+            }
+        }
+    });
 }
 
 function setTransactionsTitle(title) {
@@ -301,7 +366,6 @@ async function loadDashboard() {
             setTransactionsTitle('Last 5 Days Transactions');
             renderTransactions(dashboardState.lastTenDaysTransactions);
         }
-        renderHighlights(summary, monthlyComparison, categories, transactions);
     } catch (error) {
         console.error(error);
         document.body.innerHTML = `<main class="page"><section class="card"><h2>Dashboard failed to load</h2><p>${error.message}</p></section></main>`;
